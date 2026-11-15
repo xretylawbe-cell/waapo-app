@@ -1,61 +1,57 @@
-# Waapo proxy: free https for your Mini App (while your bot stays on Spaceify)
+# Waapo Mini App: how to put it online
 
-Browsers refuse to let a secure page (GitHub Pages) call a plain `http://` address. This tiny service
-sits on Render (which gives free https) and passes the app's requests to your bot.
+The Mini App is a page that opens inside Telegram. It lives on GitHub Pages (free). It talks to your bot's
+server through a small secure API that is already inside the bot (`api.js`).
 
-```
-Telegram app (https, GitHub Pages)  →  this proxy on Render (https)  →  your bot on Spaceify (http)
-```
+You need two things on the internet:
 
-## Before you start: test your bot's API directly
-1. In the bot's `.env` on Spaceify add:
+1. **The page** → GitHub Pages (this folder)
+2. **The server address (https)** → where your bot runs
+
+## Step 1. Try the page right now (no server needed)
+1. Create a free GitHub account and a **public** repository called `waapo-app`.
+2. Upload `index.html` and `config.js` from this folder (Add file → Upload files).
+3. Settings → Pages → Source: **Deploy from a branch**, branch **main**, folder **/(root)** → Save.
+4. After a minute your page is at `https://YOURNAME.github.io/waapo-app/`.
+5. Open `https://YOURNAME.github.io/waapo-app/?demo` in any browser to see the app with sample data.
+
+## Step 2. Give your bot server a secure address
+Mini Apps only work with https. Pick one:
+- **Oracle server:** follow the Oracle guide, section 13 (DuckDNS + Caddy). Caddy line: `waapo.duckdns.org { reverse_proxy localhost:3000 }`
+- **Spaceify panel:** ask support for "a free https address or proxy for my server port".
+
+Check it works: open `https://YOUR-ADDRESS/api/health` in a browser. You should see `{"ok":true,...}`.
+
+## Step 3. Connect the page to the server
+1. Edit `config.js` on GitHub: set `window.WAAPO_API = 'https://YOUR-ADDRESS';` (no slash at the end).
+2. In your bot's `.env` add (use your real names):
 ```
 MINIAPP_URL=https://YOURNAME.github.io/waapo-app/
 MINIAPP_ORIGIN=https://YOURNAME.github.io
-MINIAPP_PORT=25560
+MINIAPP_PORT=3000
 ```
-(25560 is the port from your Spaceify address. Use your own.) Restart the bot.
-2. On your phone open `http://de25.spaceify.eu:25560/api/health` (your address). You should see `{"ok":true,...}`.
-   If you do not, the bot is not exposing the port yet. Fix that first (check the three lines above and the bot's log
-   for "Mini App API listening").
+`MINIAPP_ORIGIN` is only the site name, with no folder. It is the one website allowed to call your server.
+3. Restart the bot. It prints "Mini App API listening on 3000".
 
-## Put the proxy on Render
-1. Make a **new GitHub repository** (for example `waapo-proxy`) and upload `server.js` and `package.json` from this folder.
-2. On render.com: **New → Web Service** → connect that repository.
-3. Settings: Language **Node**, Build command `npm install`, Start command `npm start`, Instance type **Free**.
-4. Environment variables (Add):
+## Step 4. Open it from the bot
+Send any message to the bot. A **📱 Open app** button appears at the top of your menu. Tap it.
 
-| Name | Value |
+## How it stays safe
+- Every request carries Telegram's signed login data. The server checks the signature with your bot token.
+  Nobody can open another person's account, and old login data expires after 24 hours.
+- Each person only ever sees and changes their own posts, messages and sends.
+- Parts you switch off for a user in the bot (Features) are switched off in the app too.
+- Only the website in `MINIAPP_ORIGIN` can call the API from a browser.
+- Limits: 120 requests a minute per person, 300 per address, 20 KB per request.
+
+## If something fails
+| What you see | Fix |
 |---|---|
-| `UPSTREAM` | your bot's API address, e.g. `http://de25.spaceify.eu:25560` |
-| `ALLOWED_ORIGINS` | `https://YOURNAME.github.io` (the site only, no folder) |
-| `PROXY_KEY` | a long random password you invent (30+ letters and numbers) |
+| "Open Waapo from Telegram" | The page only works inside the bot. Use the 📱 Open app button. |
+| "Almost ready" | `config.js` still has the placeholder address. |
+| "Cannot reach the server" | The https address is wrong or the bot is not running. Check `/api/health`. |
+| "Open the bot and send /start first" | That Telegram account has never started the bot. |
+| Button missing | `MINIAPP_URL` is not in `.env`, or the bot was not restarted. |
 
-5. Deploy. Render gives you an address like `https://waapo-proxy.onrender.com`.
-6. Open `https://waapo-proxy.onrender.com/api/health`. You should see `{"ok":true,...}` (the first time may take a minute).
-
-## Lock your bot so only the proxy can call it
-Add this to the bot's `.env` (the SAME password as `PROXY_KEY`) and restart the bot:
-```
-MINIAPP_PROXY_KEY=the-same-long-random-password
-```
-After this, opening the Spaceify address directly shows "Forbidden". That is correct: only the proxy may call it.
-
-## Point the app at the proxy
-Edit `config.js` in your GitHub Pages repository:
-```
-window.WAAPO_API = 'https://waapo-proxy.onrender.com';
-```
-Close and reopen the app from the bot's 📱 Open app button.
-
-## Keep it awake (optional but recommended)
-A free Render service sleeps after 15 minutes without visitors, and the next open then takes up to a minute
-(the app shows "Waking the server…"). To avoid that, add a free monitor at an uptime service (for example UptimeRobot)
-that opens `https://waapo-proxy.onrender.com/` every 5 minutes. Free Render includes about 750 hours a month,
-enough for one service running all month.
-
-## Good to know
-- The proxy keeps no data and no files, so Render restarting it is harmless.
-- The hop from Render to Spaceify is plain http. People's login data for the app is signed and expires after 24 hours,
-  but someone watching that hop could reuse it. That is fine for testing and a small group. For customers at scale,
-  move the bot to a server with its own https (the Oracle guide, or any small VPS).
+## Updating the page
+Upload the new `index.html` to the repository. Pages updates by itself in a minute. Close and reopen the app.

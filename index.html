@@ -264,7 +264,15 @@ async function start() {
   const main = $('#main');
   if (!DEMO && !(tg && tg.initData)) { main.innerHTML = '<div class="full"><h1>Open Waapo from Telegram</h1><p>This page works inside the bot. Open the bot and tap <b>Open app</b>.</p></div>'; return; }
   if (!DEMO && (!API || API.includes('YOUR-SERVER'))) { main.innerHTML = '<div class="full"><h1>Almost ready</h1><p>The server address is not set. Edit <b>config.js</b> and set <b>WAAPO_API</b>.</p></div>'; return; }
-  try { await loadMe(); } catch (e) { main.innerHTML = `<div class="full"><h1>Can’t open the app</h1><p>${esc(e.message)}</p><button class="btn quiet" onclick="location.reload()">Try again</button></div>`; return; }
+  let err = null;
+  for (let n = 0; n < 14; n++) {                       // a sleeping server can take about a minute to wake up
+    try { await loadMe(); err = null; break; } catch (e) {
+      err = e; if (!/^Cannot reach/.test(e.message)) break;
+      main.innerHTML = '<div class="full"><h1>Waking the server…</h1><p>This can take up to a minute the first time.</p></div>';
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+  if (err) { main.innerHTML = `<div class="full"><h1>Can’t open the app</h1><p>${esc(err.message)}</p><button class="btn quiet" onclick="location.reload()">Try again</button></div>`; return; }
   await show('home');
   setInterval(refresh, 30000); document.addEventListener('visibilitychange', refresh);
   setInterval(() => { if (S.tab === 'sending') refresh(); }, 4000);
