@@ -55,3 +55,18 @@ Send any message to the bot. A **📱 Open app** button appears at the top of yo
 
 ## Updating the page
 Upload the new `index.html` to the repository. Pages updates by itself in a minute. Close and reopen the app.
+
+## What the app can do (version 2)
+- **Home:** next post, 24-hour line, usage, plan, counts
+- **Posts:** write a status with a live preview, post now or schedule, edit or cancel scheduled posts
+- **Messages:** write a message to a saved list, a group list, picked groups, typed numbers or a channel; send now or schedule; edit or cancel
+- **Sending:** follow what is going out and stop it
+- **More:** plan and payment (pay online or see bank details), insights (best hours, loyal viewers, best posts), lists
+
+Still done in the bot: photos and videos, creating and editing lists, polls and the admin tools.
+
+## Updating from version 1
+1. Replace `api.js` on your bot server and restart the bot. Nothing else changes there.
+2. Replace `index.html` in your GitHub Pages repository (keep your own `config.js`).
+3. The Render proxy needs no change.
+4. Close and reopen the app.

@@ -76,12 +76,38 @@ nav button[aria-current=page]::before{content:"";position:absolute;top:0;left:30
 #toast.show{opacity:1;transform:translate(-50%,0)}#toast.err{background:var(--rose);color:#fff}
 .full{min-height:70vh;display:grid;place-content:center;text-align:center;gap:10px;padding:0 24px}.full h1{font-size:26px}
 .sk{height:18px;border-radius:6px;background:var(--line);margin:14px 0;opacity:.6}
+/* new screens */
+.back{color:var(--accent);font-weight:600;min-height:40px;padding:0 2px;margin-left:-2px}
+.lab{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:18px 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-weight:500}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.menu-row{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:16px 0;border-bottom:1px solid var(--line)}
+.menu-row:last-child{border-bottom:0}.menu-row b{display:block;font:600 18px var(--head)}.menu-row span{color:var(--muted);font-size:14px}
+.menu-row svg{width:18px;height:18px;fill:none;stroke:var(--muted);stroke-width:2;flex:0 0 auto}
+.pick{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 0;border-bottom:1px solid var(--line)}
+.pick i{font-style:normal;width:22px;height:22px;border-radius:7px;border:2px solid var(--line);display:grid;place-items:center;font-size:14px;flex:0 0 auto}
+.pick[aria-pressed=true] i{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pick small{display:block;color:var(--muted)}
+input[type=text],input[type=email],input[type=search]{width:100%;font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.scrim{position:fixed;inset:0;background:rgba(8,12,24,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{width:100%;max-width:520px;background:var(--paper);border-radius:22px 22px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
+.sheet h3{font:700 20px var(--head);margin:0 0 4px}
+.sheet .two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+.hours{display:flex;align-items:flex-end;gap:3px;height:96px;margin:10px 0 6px}
+.hours i{flex:1;background:var(--line);border-radius:3px 3px 0 0;min-height:3px}.hours i.top{background:var(--accent)}
+.hl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.big{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0}.big div b{display:block;font:700 26px var(--head)}.big div span{font-size:13px;color:var(--muted)}
+.pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0;font-size:15px}
+.price{font:700 20px var(--head)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <main id="main"><div class="sk" style="width:40%"></div><div class="sk"></div><div class="sk" style="width:70%"></div></main>
 <nav id="nav" hidden><div id="tabs"></div></nav>
+<div id="sheetroot"></div>
 <div id="toast" role="status"></div>
 <script>
 (() => {
@@ -91,9 +117,11 @@ const API = String(window.WAAPO_API || '').replace(/\/$/, '');
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COLORS = ['#128C7E', '#1E88E5', '#3949AB', '#8E24AA', '#D81B60', '#E53935', '#FB8C00', '#FDD835', '#43A047', '#263238'];
-const S = { me: null, posts: [], msgs: [], jobs: [], lists: null, tab: 'home', color: COLORS[0], when: 'now' };
-const ICONS = { home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>', posts: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>', messages: '<path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>', sending: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', lists: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>' };
-const LABEL = { home: 'Home', posts: 'Posts', messages: 'Messages', sending: 'Sending', lists: 'Lists' };
+const newNm = () => ({ text: '', kind: 'list', numbers: '', list: '', grouplist: '', channels: [], groups: {}, q: '', when: 'now', at: '' });
+const S = { me: null, posts: [], msgs: [], jobs: [], lists: null, plans: null, insights: null, channels: [], gres: [], tab: 'home', view: { messages: 'list', more: 'menu' }, color: COLORS[0], when: 'now', nm: newNm(), sheet: null, payWait: null };
+const ICONS = { home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>', posts: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>', messages: '<path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>', sending: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', more: '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>' };
+const LABEL = { home: 'Home', posts: 'Posts', messages: 'Messages', sending: 'Sending', more: 'More' };
+const CHEV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 
 /* ---------- theme ---------- */
 function theme() {
@@ -104,21 +132,18 @@ function theme() {
 if (tg) { tg.ready(); tg.expand(); tg.onEvent && tg.onEvent('themeChanged', theme); }
 theme();
 
-/* ---------- time ---------- */
+/* ---------- time + helpers ---------- */
 const sod = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 const clock = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-function dayLabel(ts) {
-  const d = new Date(ts), diff = Math.round((sod(d) - sod(new Date())) / 864e5);
-  if (diff === 0) return d.getHours() >= 18 ? 'Tonight' : 'Today';
-  if (diff === 1) return 'Tomorrow';
-  return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-}
-function until(ts) {
-  const m = Math.max(0, Math.round((ts - Date.now()) / 60000)); if (m < 1) return 'any moment now'; if (m < 60) return `in ${m} min`;
-  const h = Math.floor(m / 60); return h < 24 ? `in ${h} h ${m % 60} min` : `in ${Math.floor(h / 24)} d ${h % 24} h`;
-}
+function dayLabel(ts) { const d = new Date(ts), diff = Math.round((sod(d) - sod(new Date())) / 864e5); if (diff === 0) return d.getHours() >= 18 ? 'Tonight' : 'Today'; if (diff === 1) return 'Tomorrow'; return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }); }
+function until(ts) { const m = Math.max(0, Math.round((ts - Date.now()) / 60000)); if (m < 1) return 'any moment now'; if (m < 60) return `in ${m} min`; const h = Math.floor(m / 60); return h < 24 ? `in ${h} h ${m % 60} min` : `in ${Math.floor(h / 24)} d ${h % 24} h`; }
 const ink = hex => { const n = parseInt(hex.slice(1), 16), l = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; return l > 0.62 ? '#14110A' : '#FFFFFF'; };
 const fmtN = n => Number(n || 0).toLocaleString();
+const p2 = x => String(x).padStart(2, '0');
+const toLocalInput = ms => { const d = new Date(ms); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+const defaultWhen = () => { const d = new Date(Date.now() + 36e5); d.setMinutes(0, 0, 0); return toLocalInput(d.getTime()); };
+const hour12 = h => `${h % 12 || 12}${h < 12 ? ' AM' : ' PM'}`;
+const parseNums = s => [...new Set(String(s || '').split(/[\s,;]+/).map(x => x.replace(/\D/g, '')).filter(x => x.length >= 7 && x.length <= 15))];
 
 /* ---------- api (real or demo) ---------- */
 async function api(method, path, body) {
@@ -130,9 +155,10 @@ async function api(method, path, body) {
   if (!r.ok) throw new Error(j.error || 'Something went wrong. Try again.');
   return j;
 }
-function toast(msg, bad) { const t = $('#toast'); t.textContent = msg; t.className = 'show' + (bad ? ' err' : ''); clearTimeout(toast.t); toast.t = setTimeout(() => { t.className = ''; }, 3200); }
+function toast(msg, bad) { const t = $('#toast'); t.textContent = msg; t.className = 'show' + (bad ? ' err' : ''); clearTimeout(toast.t); toast.t = setTimeout(() => { t.className = ''; }, 3400); }
 const buzz = k => { try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred(k || 'success'); } catch (e) {} };
 const confirmAsk = msg => new Promise(res => { if (tg && tg.showConfirm) tg.showConfirm(msg, res); else res(confirm(msg)); });
+const openLink = url => { if (DEMO) return toast('Demo: the payment page would open here.'); if (tg && tg.openLink) tg.openLink(url); else window.open(url, '_blank'); };
 
 /* ---------- loading ---------- */
 const need = k => !S.me || S.me.features[k] !== false;
@@ -140,12 +166,20 @@ async function loadMe() { S.me = await api('GET', '/api/me'); }
 async function loadPosts() { if (need('schedule')) S.posts = (await api('GET', '/api/posts')).posts; }
 async function loadMsgs() { if (need('messages')) S.msgs = (await api('GET', '/api/messages')).messages; }
 async function loadJobs() { if (need('sending')) S.jobs = (await api('GET', '/api/jobs')).jobs; }
-async function loadLists() { if (need('lists')) S.lists = await api('GET', '/api/lists'); }
-const loaders = { home: () => Promise.all([loadMe(), loadPosts(), loadJobs()]), posts: () => Promise.all([loadMe(), loadPosts()]), messages: loadMsgs, sending: loadJobs, lists: loadLists };
+async function loadLists() { if (need('lists') || need('messages')) { try { S.lists = await api('GET', '/api/lists'); } catch (e) { S.lists = S.lists || { numbers: [], groups: [] }; } } }
+async function loadChannels() { if (need('messages')) { try { S.channels = (await api('GET', '/api/channels')).channels; } catch (e) { S.channels = []; } } }
+async function loadPlans() { if (need('plan')) S.plans = await api('GET', '/api/plans'); }
+async function loadInsights() { if (need('insights')) S.insights = await api('GET', '/api/insights'); }
+const loaders = {
+  home: () => Promise.all([loadMe(), loadPosts(), loadJobs()]), posts: () => Promise.all([loadMe(), loadPosts()]),
+  messages: async () => { await loadMsgs(); if (S.view.messages === 'new') await Promise.all([loadLists(), loadChannels()]); },
+  sending: loadJobs,
+  more: async () => { const v = S.view.more; if (v === 'plan') await Promise.all([loadMe(), loadPlans()]); else if (v === 'insights') await loadInsights(); else if (v === 'lists') await loadLists(); else await loadMe(); }
+};
 
 /* ---------- screens ---------- */
 function tabs() {
-  const f = S.me.features, show = { home: true, posts: f.post || f.schedule, messages: f.messages, sending: f.sending, lists: f.lists };
+  const f = S.me.features, show = { home: true, posts: f.post || f.schedule, messages: f.messages, sending: f.sending, more: f.plan || f.insights || f.lists };
   $('#tabs').innerHTML = Object.keys(LABEL).filter(k => show[k]).map(k => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>${LABEL[k]}</button>`).join('');
   $('#nav').hidden = false;
 }
@@ -158,7 +192,7 @@ function homeHTML() {
   const pct = (a, b) => Math.min(100, Math.round(100 * (a || 0) / Math.max(1, b || 1)));
   const planLine = m.plan.expires ? (m.plan.expired ? 'Ended' : `${m.plan.daysLeft} day${m.plan.daysLeft === 1 ? '' : 's'} left`) : 'No end date';
   return `<div class="top"><div class="brand">Waapo</div><div class="pill"><span class="dot ${!m.wa.linked ? '' : up ? 'on' : 'off'}"></span>${!m.wa.linked ? 'Not linked' : up ? 'Connected' + (m.wa.number ? ' · +' + esc(m.wa.number) : '') : 'Reconnecting'}</div></div>
-${!m.wa.linked ? '<div class="banner">WhatsApp is not linked yet. Open the bot and tap <b>Link WhatsApp</b>.</div>' : ''}${m.plan.paused ? '<div class="banner">Your account is paused. Contact the admin.</div>' : ''}${m.plan.expired && !m.plan.paused ? '<div class="banner">Your plan has ended. Open the bot, then Plan, to renew.</div>' : ''}
+${!m.wa.linked ? '<div class="banner">WhatsApp is not linked yet. Open the bot and tap <b>Link WhatsApp</b>.</div>' : ''}${m.plan.paused ? '<div class="banner">Your account is paused. Contact the admin.</div>' : ''}${m.plan.expired && !m.plan.paused ? '<div class="banner">Your plan has ended. Open <b>More</b>, then <b>Plan and payment</b>, to renew.</div>' : ''}
 ${nextHTML}
 <h2>Today</h2><ul class="rows">
 <li class="stack"><div class="l"><span>Posts today</span><b>${m.usage.today} of ${m.usage.limit}</b></div><div class="bar"><i style="width:${pct(m.usage.today, m.usage.limit)}%"></i></div></li>
@@ -179,51 +213,167 @@ ${later ? '<input type="datetime-local" id="at" aria-label="Date and time" style
 }
 function plistHTML() {
   if (!S.posts.length) return '<div class="empty"><b>Nothing scheduled</b>Posts you schedule appear here.</div>';
-  return S.posts.map(p => `<div class="item"><div class="t">${dayLabel(p.at)}, ${clock(p.at)}</div><div class="x">${esc(p.text || p.type)}</div><div class="row">${p.repeat && p.repeat !== 'none' ? `<span class="tag">Repeats ${esc(p.repeat)}</span>` : '<span></span>'}<button class="link danger" data-cancel-post="${esc(p.id)}">Cancel post</button></div></div>`).join('');
+  return S.posts.map(p => `<div class="item"><div class="t">${dayLabel(p.at)}, ${clock(p.at)}</div><div class="x">${esc(p.text || p.type)}</div><div class="row">${p.repeat && p.repeat !== 'none' ? `<span class="tag">Repeats ${esc(p.repeat)}</span>` : '<span></span>'}<span><button class="link" data-edit-post="${esc(p.id)}">Edit</button> &nbsp; <button class="link danger" data-cancel-post="${esc(p.id)}">Cancel</button></span></div></div>`).join('');
 }
 function targetText(t) { if (!t) return ''; const n = t.count; return { numbers: `${n} number${n === 1 ? '' : 's'}`, list: `list “${esc(t.name)}”`, groups: `${n} group${n === 1 ? '' : 's'}`, grouplist: `group list “${esc(t.name)}”`, channels: `${n} channel${n === 1 ? '' : 's'}` }[t.kind] || ''; }
 function msgsHTML() {
-  const list = S.msgs.length ? S.msgs.map(m => `<div class="item"><div class="t">${dayLabel(m.at)}, ${clock(m.at)}</div><div class="x">${esc(m.text || m.type)}</div><div class="row"><span class="tag">To ${targetText(m.target)}${m.repeat && m.repeat !== 'none' ? ' · repeats ' + esc(m.repeat) : ''}</span><button class="link danger" data-cancel-msg="${esc(m.id)}">Cancel message</button></div></div>`).join('')
-    : '<div class="empty"><b>No scheduled messages</b>Create one in the bot under Post, then Messages.</div>';
-  return `<div class="top"><h1 style="font-size:24px">Scheduled messages</h1></div>${list}`;
+  if (S.view.messages === 'new') return newMsgHTML();
+  const list = S.msgs.length ? S.msgs.map(m => `<div class="item"><div class="t">${dayLabel(m.at)}, ${clock(m.at)}</div><div class="x">${esc(m.text || m.type)}</div><div class="row"><span class="tag">To ${targetText(m.target)}${m.repeat && m.repeat !== 'none' ? ' · repeats ' + esc(m.repeat) : ''}</span><span><button class="link" data-edit-msg="${esc(m.id)}">Edit</button> &nbsp; <button class="link danger" data-cancel-msg="${esc(m.id)}">Cancel</button></span></div></div>`).join('')
+    : '<div class="empty"><b>No scheduled messages</b>Write one and pick who gets it.</div>';
+  return `<div class="top"><h1 style="font-size:24px">Messages</h1></div><div style="margin:16px 0 4px"><button class="btn" data-newmsg>New message</button></div><h2>Scheduled</h2>${list}`;
 }
+function newMsgHTML() {
+  const n = S.nm, later = n.when === 'later', kinds = [['list', 'My list'], ['grouplist', 'Group list'], ['groups', 'Groups'], ['numbers', 'Numbers'], ['channels', 'Channel']];
+  return `<div class="top"><button class="back" data-back="messages">‹ Messages</button></div><h1 style="font-size:24px;margin-top:6px">New message</h1>
+<label class="lab" for="mtxt">Message</label><textarea id="mtxt" maxlength="2000" placeholder="Write your message" style="min-height:120px"></textarea>
+<div class="meta"><span id="mcnt">0 of 2000</span><span>{name} becomes each person’s first name</span></div>
+<span class="lab">Send to</span><div class="chips" id="kinds">${kinds.map(([k, l]) => `<button class="chip" data-kind="${k}" aria-pressed="${n.kind === k}">${l}</button>`).join('')}</div>
+<div id="target"></div><div class="sub" id="sum" style="margin:12px 0"></div>
+<div class="seg" role="group" aria-label="When"><button data-mwhen="now" aria-pressed="${!later}">Now</button><button data-mwhen="later" aria-pressed="${later}">Later</button></div>
+${later ? '<input type="datetime-local" id="mat" aria-label="Date and time" style="margin-bottom:12px">' : ''}
+<button class="btn" id="msend" disabled>${later ? 'Schedule message' : 'Send now'}</button>`;
+}
+function chipsHTML(items, sel, attr, multi) { return items.length ? `<div class="chips">${items.map(x => `<button class="chip" ${attr}="${esc(x.id ?? x.name)}" aria-pressed="${multi ? sel.includes(x.id) : sel === x.name}">${esc(x.name)}${x.count !== undefined ? ' · ' + fmtN(x.count) : ''}</button>`).join('')}</div>` : ''; }
+function targetHTML() {
+  const n = S.nm, L = S.lists || { numbers: [], groups: [] };
+  if (n.kind === 'list') return L.numbers.length ? chipsHTML(L.numbers, n.list, 'data-list') : '<div class="empty">No lists yet. Create one in the bot under Audience, then Lists.</div>';
+  if (n.kind === 'grouplist') return L.groups.length ? chipsHTML(L.groups, n.grouplist, 'data-glist') : '<div class="empty">No group lists yet. Create one in the bot under Messages, then Group lists.</div>';
+  if (n.kind === 'channels') return S.channels.length ? chipsHTML(S.channels, n.channels, 'data-chan', true) : '<div class="empty">No channels saved. Add one in the bot under Messages, then My channels.</div>';
+  if (n.kind === 'numbers') return '<textarea id="nums" placeholder="One number per line, with country code, like 2348012345678" style="min-height:110px"></textarea>';
+  return `<input type="search" id="gq" placeholder="Search your groups" aria-label="Search groups"><div id="gsel" class="sub" style="margin:10px 0 0"></div><div id="gres"></div>`;
+}
+function gresHTML() {
+  if (!S.gres.length) return '<div class="empty">No group matches.</div>';
+  return S.gres.map(g => `<button class="pick" data-gtoggle="${esc(g.id)}" aria-pressed="${!!S.nm.groups[g.id]}"><span>${esc(g.name)}<small>${fmtN(g.size)} members${g.admin ? ' · you admin' : ''}</small></span><i>${S.nm.groups[g.id] ? '✓' : ''}</i></button>`).join('');
+}
+function nmTarget() {
+  const n = S.nm;
+  if (n.kind === 'list') return n.list ? { kind: 'list', name: n.list } : null;
+  if (n.kind === 'grouplist') return n.grouplist ? { kind: 'grouplist', name: n.grouplist } : null;
+  if (n.kind === 'groups') { const ids = Object.keys(n.groups); return ids.length ? { kind: 'groups', ids } : null; }
+  if (n.kind === 'numbers') { const nums = parseNums(n.numbers); return nums.length ? { kind: 'numbers', numbers: nums } : null; }
+  return n.channels.length ? { kind: 'channels', ids: n.channels } : null;
+}
+function nmCount() {
+  const n = S.nm, L = S.lists || { numbers: [], groups: [] };
+  if (n.kind === 'list') return (L.numbers.find(x => x.name === n.list) || {}).count || 0;
+  if (n.kind === 'grouplist') return (L.groups.find(x => x.name === n.grouplist) || {}).count || 0;
+  if (n.kind === 'groups') return Object.keys(n.groups).length; if (n.kind === 'numbers') return parseNums(n.numbers).length; return n.channels.length;
+}
+function nmUpdate() {
+  const n = S.nm, t = nmTarget(), c = nmCount(), noun = { list: 'people', grouplist: 'groups', groups: 'groups', numbers: 'numbers', channels: 'channels' }[n.kind];
+  if ($('#sum')) $('#sum').textContent = t ? `Goes to ${fmtN(c)} ${noun}` : 'Choose who should get it.';
+  if ($('#mcnt')) $('#mcnt').textContent = `${n.text.length} of 2000`;
+  if ($('#msend')) $('#msend').disabled = !(n.text.trim() && t && (n.when === 'now' || n.at));
+  if ($('#gsel')) $('#gsel').textContent = Object.keys(n.groups).length ? `${Object.keys(n.groups).length} selected: ${Object.values(n.groups).slice(0, 3).join(', ')}${Object.keys(n.groups).length > 3 ? '…' : ''}` : '';
+}
+let gTimer = 0;
+async function searchGroups(q) { try { S.gres = (await api('GET', '/api/groups?q=' + encodeURIComponent(q || ''))).groups; } catch (e) { S.gres = []; toast(e.message, true); } if ($('#gres')) $('#gres').innerHTML = gresHTML(); }
+function renderTarget() { $('#target').innerHTML = targetHTML(); if (S.nm.kind === 'numbers') $('#nums').value = S.nm.numbers; if (S.nm.kind === 'groups') { $('#gq').value = S.nm.q; searchGroups(S.nm.q); } nmUpdate(); }
 function jobsHTML() {
   const list = S.jobs.length ? S.jobs.map(j => { const left = Math.max(0, j.total - j.sent), p = j.total ? Math.round(100 * j.sent / j.total) : 0; return `<div class="item"><div class="t">${esc(j.preview || j.type)}</div><div class="sub">${j.type === 'message' ? 'Message' : 'Status'} · started ${clock(j.started)}</div><div class="bar" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100"><i style="width:${p}%"></i></div><div class="row" style="margin-top:10px"><span>${fmtN(j.sent)} sent · ${fmtN(left)} left</span>${j.stopping ? '<span class="tag">Stopping</span>' : `<button class="link danger" data-stop="${esc(j.id)}">Stop</button>`}</div></div>`; }).join('')
     : '<div class="empty"><b>Nothing is sending</b>When you post or send a message, you can follow it here and stop it.</div>';
   return `<div class="top"><h1 style="font-size:24px">Sending now</h1></div>${list}`;
 }
+function moreHTML() {
+  const v = S.view.more, f = S.me.features;
+  if (v === 'plan') return planHTML(); if (v === 'insights') return insightsHTML(); if (v === 'lists') return listsHTML();
+  const m = S.me, left = m.plan.expires ? (m.plan.expired ? 'ended' : `${m.plan.daysLeft} day${m.plan.daysLeft === 1 ? '' : 's'} left`) : '';
+  return `<div class="top"><h1 style="font-size:24px">More</h1></div><div style="margin-top:8px">
+${f.plan ? `<button class="menu-row" data-sub="plan"><div><b>Plan and payment</b><span>${esc(m.plan.name || 'Your plan')}${left ? ' · ' + left : ''}</span></div>${CHEV}</button>` : ''}
+${f.insights ? `<button class="menu-row" data-sub="insights"><div><b>Insights</b><span>Who watches, and when</span></div>${CHEV}</button>` : ''}
+${f.lists ? `<button class="menu-row" data-sub="lists"><div><b>Lists</b><span>${fmtN(m.counts.lists)} saved</span></div>${CHEV}</button>` : ''}</div>`;
+}
+const backBtn = lab => `<div class="top"><button class="back" data-back="more">‹ ${lab}</button></div>`;
+function planHTML() {
+  const m = S.me, P = S.plans || { plans: [], general: {} }, left = m.plan.expires ? (m.plan.expired ? 'Ended' : `${m.plan.daysLeft} day${m.plan.daysLeft === 1 ? '' : 's'} left`) : 'No end date';
+  const anyPay = P.plans.some(p => p.payable);
+  const rows = P.plans.length ? P.plans.map(p => `<div class="item"><div class="row"><div><div class="t">${esc(p.name)}</div><div class="sub">${esc(p.days)} days</div></div><div class="price">${esc(p.price)}</div></div>
+${p.payable ? `<div style="margin-top:12px"><button class="btn" data-pay="${esc(p.id)}">Pay online</button></div>` : ''}
+${p.manual && (p.manual.bank || p.manual.link) ? `<details style="margin-top:10px"><summary class="link">${p.payable ? 'Or pay by bank transfer' : 'How to pay'}</summary>${p.manual.link ? `<div class="pre">${esc(p.manual.link)}</div>` : ''}${p.manual.bank ? `<div class="pre">${esc(p.manual.bank)}</div>` : ''}<div class="sub">After paying, send your receipt in the bot: Plan, then Send receipt.</div></details>` : ''}</div>`).join('')
+    : '<div class="empty"><b>No plans yet</b>Plans appear here when the admin adds them.</div>';
+  return `${backBtn('More')}<h1 style="font-size:24px;margin-top:6px">Plan and payment</h1>
+<ul class="rows" style="margin-top:8px"><li><span>Current plan${m.plan.name ? ' · ' + esc(m.plan.name) : ''}</span><b>${left}</b></li></ul>
+${anyPay && !P.email ? '<label class="lab" for="pemail">Email for your payment receipt</label><input type="email" id="pemail" placeholder="you@example.com" autocomplete="email">' : ''}
+${S.payWait ? '<div class="banner">Waiting for your payment. It activates by itself within a minute of paying.</div>' : ''}
+<h2>Choose a plan</h2>${rows}`;
+}
+function insightsHTML() {
+  const I = S.insights;
+  if (!I) return `${backBtn('More')}<div class="empty">Nothing to show yet.</div>`;
+  const max = Math.max(1, ...I.hours), order = I.hours.map((v, h) => [v, h]).sort((a, b) => b[0] - a[0]).filter(x => x[0] > 0).slice(0, 3).map(x => hour12(x[1]));
+  const bars = I.hours.map((v, h) => `<i class="${v && v >= max * 0.85 ? 'top' : ''}" style="height:${Math.max(3, Math.round(v / max * 100))}%" title="${hour12(h)}: ${v}"></i>`).join('');
+  const viewers = I.topViewers.length ? `<ul class="rows">${I.topViewers.map(v => `<li><span>${esc(v.name || '+' + v.number)}</span><b>${fmtN(v.views)}</b></li>`).join('')}</ul>` : '<div class="empty">No views recorded yet. They appear after people open your statuses.</div>';
+  const best = I.bestPosts.length ? `<ul class="rows">${I.bestPosts.map(b => `<li><span>${esc(b.preview)}</span><b>${fmtN(b.views)}</b></li>`).join('')}</ul>` : '<div class="empty">No posts yet.</div>';
+  return `${backBtn('More')}<h1 style="font-size:24px;margin-top:6px">Insights</h1>
+<h2>Best time to post</h2><div style="font:600 22px var(--head)">${order.length ? esc(order.join(', ')) : 'Not enough data yet'}</div>
+<div class="hours" aria-hidden="true">${bars}</div><div class="hl"><span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>
+<h2>Last 7 days</h2><div class="big"><div><b>${fmtN(I.views7)}</b><span>views</span></div><div><b>${fmtN(I.viewers7)}</b><span>people</span></div><div><b>${fmtN(I.posts7)}</b><span>posts</span></div></div>
+<h2>Most loyal viewers</h2>${viewers}<h2>Best posts</h2>${best}<p class="sub" style="margin-top:18px">Counts come from people who have read receipts on.</p>`;
+}
 function listsHTML() {
   const L = S.lists || { numbers: [], groups: [] }, rows = a => a.length ? `<ul class="rows">${a.map(x => `<li><span>${esc(x.name)}</span><b>${fmtN(x.count)}</b></li>`).join('')}</ul>` : '<div class="empty">None yet.</div>';
-  return `<div class="top"><h1 style="font-size:24px">Lists</h1></div><h2>People</h2>${rows(L.numbers)}<h2>Groups</h2>${rows(L.groups)}<p class="sub" style="margin-top:22px">Create and edit lists in the bot.</p>`;
+  return `${backBtn('More')}<h1 style="font-size:24px;margin-top:6px">Lists</h1><h2>People</h2>${rows(L.numbers)}<h2>Groups</h2>${rows(L.groups)}<p class="sub" style="margin-top:22px">Create and edit lists in the bot.</p>`;
 }
 function previewUpdate() {
   const pv = $('#pv'), t = $('#txt'); if (!pv) return; const v = t.value, n = v.length;
   pv.style.background = S.color; pv.style.color = ink(S.color); pv.style.fontSize = n > 300 ? '18px' : n > 140 ? '22px' : n > 60 ? '27px' : '34px';
-  pv.textContent = v || 'Your words appear here';  pv.style.opacity = v ? 1 : .8;
+  pv.textContent = v || 'Your words appear here'; pv.style.opacity = v ? 1 : .8;
   $('#cnt').textContent = `${n} of 700`; $('#go').disabled = !v.trim() || (S.when === 'later' && !$('#at').value);
 }
-function defaultWhen() { const d = new Date(Date.now() + 36e5); d.setMinutes(0, 0, 0); const p = x => String(x).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; }
+/* edit sheet (posts + messages) */
+function sheetHTML() {
+  const s = S.sheet; if (!s) return '';
+  return `<div class="scrim" data-sheet-close><div class="sheet" role="dialog" aria-modal="true" aria-label="Edit"><h3>${s.kind === 'post' ? 'Edit post' : 'Edit message'}</h3><div class="sub">${s.hasText ? 'Change the words, the time, or both.' : 'Change the time or the caption.'}</div>
+<label class="lab" for="sheet-text">${s.isCaption ? 'Caption' : 'Text'}</label><textarea id="sheet-text" maxlength="${s.kind === 'post' ? 700 : 2000}" style="min-height:110px"></textarea>
+<label class="lab" for="sheet-at">Send at</label><input type="datetime-local" id="sheet-at">
+<div class="two"><button class="btn ghost" data-sheet-close-btn>Close</button><button class="btn" data-sheet-save>Save</button></div></div></div>`;
+}
+function openSheet(kind, item) {
+  S.sheet = { kind, id: item.id, isCaption: item.type !== 'text', hasText: true };
+  $('#sheetroot').innerHTML = sheetHTML(); $('#sheet-text').value = item.text || ''; $('#sheet-at').value = toLocalInput(item.at);
+}
+function closeSheet() { S.sheet = null; $('#sheetroot').innerHTML = ''; }
 
 /* ---------- navigation + actions ---------- */
+function routeHTML(tab) { return { home: homeHTML, posts: postsHTML, messages: msgsHTML, sending: jobsHTML, more: moreHTML }[tab](); }
 async function show(tab, keep) {
   S.tab = tab; tabs();
-  const main = $('#main'), html = { home: homeHTML, posts: postsHTML, messages: msgsHTML, sending: jobsHTML, lists: listsHTML }[tab];
+  const main = $('#main');
   try { await loaders[tab](); } catch (e) { main.innerHTML = `<div class="full"><h1>Can’t load this</h1><p>${esc(e.message)}</p><button class="btn quiet" data-tab="${tab}">Try again</button></div>`; return; }
-  main.innerHTML = html();
-  if (tab === 'posts') { const at = $('#at'); if (at) { at.value = S.lastAt || defaultWhen(); at.min = defaultWhen(); at.addEventListener('input', () => { S.lastAt = at.value; previewUpdate(); }); } if ($('#txt')) { $('#txt').value = S.draft || ''; $('#txt').addEventListener('input', () => { S.draft = $('#txt').value; previewUpdate(); }); previewUpdate(); } $('#plist').innerHTML = plistHTML(); }
+  main.innerHTML = routeHTML(tab);
+  if (tab === 'posts') { const at = $('#at'); if (at) { at.value = S.lastAt || defaultWhen(); at.min = defaultWhen(); } if ($('#txt')) { $('#txt').value = S.draft || ''; previewUpdate(); } $('#plist').innerHTML = plistHTML(); }
+  if (tab === 'messages' && S.view.messages === 'new') { $('#mtxt').value = S.nm.text; const at = $('#mat'); if (at) { at.value = S.nm.at || defaultWhen(); S.nm.at = at.value; at.min = defaultWhen(); } renderTarget(); }
   if (!keep) window.scrollTo(0, 0);
 }
 async function refresh() {
-  if (document.hidden || !S.me) return;
+  if (document.hidden || !S.me || S.sheet) return;
   try { await loaders[S.tab]();
-    if (S.tab === 'home') $('#main').innerHTML = homeHTML(); else if (S.tab === 'posts') $('#plist').innerHTML = plistHTML(); else if (S.tab === 'messages') $('#main').innerHTML = msgsHTML(); else if (S.tab === 'sending') $('#main').innerHTML = jobsHTML(); } catch (e) {}
+    if (S.tab === 'home') $('#main').innerHTML = homeHTML(); else if (S.tab === 'posts') $('#plist').innerHTML = plistHTML(); else if (S.tab === 'messages' && S.view.messages === 'list') $('#main').innerHTML = msgsHTML(); else if (S.tab === 'sending') $('#main').innerHTML = jobsHTML(); } catch (e) {}
 }
+function startPayWait() {
+  S.payWait = { until: Date.now() + 4 * 60000, base: (S.me.plan.expires || 0) }; clearInterval(S.payT);
+  S.payT = setInterval(async () => {
+    if (!S.payWait || Date.now() > S.payWait.until) { clearInterval(S.payT); S.payWait = null; return; }
+    try { await loadMe(); if ((S.me.plan.expires || 0) > S.payWait.base) { S.payWait = null; clearInterval(S.payT); buzz(); toast('Payment confirmed. Your plan is active.'); if (S.tab === 'more' && S.view.more === 'plan') { await loadPlans(); $('#main').innerHTML = planHTML(); } } } catch (e) {}
+  }, 8000);
+}
+document.addEventListener('input', e => {
+  const t = e.target, id = t && t.id; if (!id) return;
+  if (id === 'txt') { S.draft = t.value; previewUpdate(); }
+  else if (id === 'at') { S.lastAt = t.value; previewUpdate(); }
+  else if (id === 'mtxt') { S.nm.text = t.value; nmUpdate(); }
+  else if (id === 'mat') { S.nm.at = t.value; nmUpdate(); }
+  else if (id === 'nums') { S.nm.numbers = t.value; nmUpdate(); }
+  else if (id === 'gq') { S.nm.q = t.value; clearTimeout(gTimer); gTimer = setTimeout(() => searchGroups(S.nm.q), 300); }
+});
 document.addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
+  const d = b.dataset || {};
   try {
-    if (b.dataset.tab) return show(b.dataset.tab);
-    if (b.dataset.color) { S.color = b.dataset.color; document.querySelectorAll('.sw').forEach(x => x.setAttribute('aria-checked', x.dataset.color === S.color)); return previewUpdate(); }
-    if (b.dataset.when) { S.when = b.dataset.when; return show('posts', true); }
+    if (d.tab) { if (d.tab === 'messages' && S.tab === 'messages') S.view.messages = 'list'; if (d.tab === 'more' && S.tab === 'more') S.view.more = 'menu'; return show(d.tab); }
+    if (d.color) { S.color = d.color; document.querySelectorAll('.sw').forEach(x => x.setAttribute('aria-checked', x.dataset.color === S.color)); return previewUpdate(); }
+    if (d.when) { S.when = d.when; return show('posts', true); }
     if (b.id === 'go') {
       b.disabled = true; const text = $('#txt').value.trim(), later = S.when === 'later';
       const r = await api('POST', '/api/posts', { text, bg: S.color, when: S.when, at: later ? new Date($('#at').value).getTime() : undefined });
@@ -232,30 +382,74 @@ document.addEventListener('click', async e => {
       else { toast('Posting started. Follow it under Sending.'); setTimeout(() => show('sending'), 700); }
       return;
     }
-    if (b.dataset.cancelPost && await confirmAsk('Cancel this scheduled post?')) { await api('DELETE', '/api/posts/' + b.dataset.cancelPost); buzz(); toast('Post cancelled'); await loadPosts(); const l = $('#plist'); if (l) l.innerHTML = plistHTML(); else $('#main').innerHTML = homeHTML(); }
-    if (b.dataset.cancelMsg && await confirmAsk('Cancel this scheduled message?')) { await api('DELETE', '/api/messages/' + b.dataset.cancelMsg); buzz(); toast('Message cancelled'); await loadMsgs(); $('#main').innerHTML = msgsHTML(); }
-    if (b.dataset.stop && await confirmAsk('Stop this send? People who already received it keep it.')) { await api('POST', '/api/jobs/' + b.dataset.stop + '/stop'); buzz(); toast('Stopping'); await loadJobs(); $('#main').innerHTML = jobsHTML(); }
-  } catch (err) { buzz('error'); toast(err.message, true); if (b.id === 'go') b.disabled = false; }
+    if (d.cancelPost !== undefined && await confirmAsk('Cancel this scheduled post?')) { await api('DELETE', '/api/posts/' + d.cancelPost); buzz(); toast('Post cancelled'); await loadPosts(); const l = $('#plist'); if (l) l.innerHTML = plistHTML(); else $('#main').innerHTML = homeHTML(); return; }
+    if (d.cancelMsg !== undefined && await confirmAsk('Cancel this scheduled message?')) { await api('DELETE', '/api/messages/' + d.cancelMsg); buzz(); toast('Message cancelled'); await loadMsgs(); $('#main').innerHTML = msgsHTML(); return; }
+    if (d.stop !== undefined && await confirmAsk('Stop this send? People who already received it keep it.')) { await api('POST', '/api/jobs/' + d.stop + '/stop'); buzz(); toast('Stopping'); await loadJobs(); $('#main').innerHTML = jobsHTML(); return; }
+    /* edit sheet */
+    if (d.editPost !== undefined) { const p = S.posts.find(x => String(x.id) === d.editPost); if (p) openSheet('post', p); return; }
+    if (d.editMsg !== undefined) { const m = S.msgs.find(x => String(x.id) === d.editMsg); if (m) openSheet('msg', m); return; }
+    if (d.sheetClose !== undefined && e.target === b || d.sheetCloseBtn !== undefined) return closeSheet();
+    if (d.sheetSave !== undefined) {
+      const s = S.sheet, at = new Date($('#sheet-at').value).getTime(), text = $('#sheet-text').value;
+      await api('POST', `/api/${s.kind === 'post' ? 'posts' : 'messages'}/${s.id}/edit`, { text, at }); buzz(); toast('Saved'); closeSheet();
+      if (s.kind === 'post') { await loadPosts(); const l = $('#plist'); if (l) l.innerHTML = plistHTML(); else $('#main').innerHTML = homeHTML(); } else { await loadMsgs(); $('#main').innerHTML = msgsHTML(); }
+      return;
+    }
+    /* new message */
+    if (d.newmsg !== undefined) { S.nm = newNm(); S.view.messages = 'new'; return show('messages'); }
+    if (d.back === 'messages') { S.view.messages = 'list'; return show('messages'); }
+    if (d.kind) { S.nm.kind = d.kind; document.querySelectorAll('[data-kind]').forEach(x => x.setAttribute('aria-pressed', x.dataset.kind === d.kind)); return renderTarget(); }
+    if (d.mwhen) { S.nm.when = d.mwhen; return show('messages', true); }
+    if (d.list !== undefined) { S.nm.list = d.list; $('#target').innerHTML = targetHTML(); return nmUpdate(); }
+    if (d.glist !== undefined) { S.nm.grouplist = d.glist; $('#target').innerHTML = targetHTML(); return nmUpdate(); }
+    if (d.chan !== undefined) { const c = S.nm.channels, i = c.indexOf(d.chan); i < 0 ? c.push(d.chan) : c.splice(i, 1); $('#target').innerHTML = targetHTML(); return nmUpdate(); }
+    if (d.gtoggle !== undefined) { const g = S.gres.find(x => x.id === d.gtoggle); if (S.nm.groups[d.gtoggle]) delete S.nm.groups[d.gtoggle]; else S.nm.groups[d.gtoggle] = g ? g.name : d.gtoggle; $('#gres').innerHTML = gresHTML(); return nmUpdate(); }
+    if (b.id === 'msend') {
+      b.disabled = true; const n = S.nm, later = n.when === 'later';
+      const r = await api('POST', '/api/messages', { text: n.text.trim(), target: nmTarget(), when: n.when, at: later ? new Date(n.at).getTime() : undefined });
+      buzz(); S.nm = newNm(); S.view.messages = 'list';
+      if (r.scheduled) { toast(`Scheduled for ${r.recipients} ${r.recipients === 1 ? 'recipient' : 'recipients'}`); await show('messages'); } else { toast('Sending started. Follow it under Sending.'); setTimeout(() => show('sending'), 700); }
+      return;
+    }
+    /* more */
+    if (d.sub) { S.view.more = d.sub; return show('more'); }
+    if (d.back === 'more') { S.view.more = 'menu'; return show('more'); }
+    if (d.pay !== undefined) {
+      b.disabled = true; const email = $('#pemail') ? $('#pemail').value.trim() : '';
+      try { const r = await api('POST', '/api/pay', { planId: d.pay, email: email || undefined }); openLink(r.url); toast('Payment page opened. Your plan activates by itself after you pay.'); if (!DEMO) startPayWait(); else S.payWait = { until: 0, base: 0 }; await loadPlans(); $('#main').innerHTML = planHTML(); }
+      finally { b.disabled = false; } return;
+    }
+  } catch (err) { buzz('error'); toast(err.message, true); if (b.id === 'go' || b.id === 'msend') b.disabled = false; }
 });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheet) closeSheet(); });
 
 /* ---------- demo data (used for ?demo and the preview page) ---------- */
-const D = { t0: Date.now(), posts: null, msgs: null, jobs: null };
-function demo(method, path, body) {
-  const h = 36e5;
+const D = { posts: null, msgs: null, jobs: null, plan: 5 };
+const DG = ['Church Youth', 'Church Choir', 'Business Owners', 'Lagos Traders', 'Family Circle', 'Old School Friends', 'Alumni 2012', 'Football Fans', 'Neighbours Watch', 'Online Sellers'];
+function demo(method, full, body) {
+  const [path, qs] = full.split('?'), h = 36e5, q = new URLSearchParams(qs || '');
   D.posts ||= [{ id: 1, type: 'text', text: 'Good night everyone 🌙 see you tomorrow', at: Date.now() + 3.2 * h, repeat: 'daily', bg: '#263238' }, { id: 2, type: 'text', text: 'Weekend sale starts at 9 AM. Everything 20% off.', at: Date.now() + 15 * h, repeat: 'none', bg: '#E53935' }, { id: 3, type: 'image', text: 'New arrivals are in', at: Date.now() + 52 * h, repeat: 'weekly', bg: null }];
   D.msgs ||= [{ id: 11, type: 'text', text: 'Happy new week 🙏 Wishing you grace and favour.', at: Date.now() + 28 * h, repeat: 'weekly', target: { kind: 'grouplist', name: 'Church groups', count: 6 } }, { id: 12, type: 'image', text: 'Event invite: Saturday 4 PM', at: Date.now() + 70 * h, repeat: 'none', target: { kind: 'list', name: 'Customers', count: 184 } }];
   D.jobs ||= [{ id: 21, type: 'status', preview: 'Black Friday is here', total: 2500, sent: 1180, started: Date.now() - 6 * 60000, stopping: false }];
   D.jobs.forEach(j => { if (!j.stopping && j.sent < j.total) j.sent = Math.min(j.total, j.sent + 70); });
-  const r = v => new Promise(res => setTimeout(() => res(v), 120)), key = method + ' ' + path;
-  if (key === 'GET /api/me') return r({ id: '1', name: 'Ruthy', role: 'user', wa: { linked: true, up: true, number: '2348168593820', name: 'Ruthy' }, plan: { name: 'Monthly', expires: Date.now() + 5 * 24 * h, expired: false, paused: false, daysLeft: 5 }, usage: { today: 8, limit: 10, total: 142 }, counts: { contacts: 25716, groups: 496, scheduledPosts: D.posts.length, scheduledMessages: D.msgs.length, lists: 4 }, features: { post: true, schedule: true, messages: true, sending: true, lists: true } });
+  const r = v => new Promise(res => setTimeout(() => res(v), 120)), key = method + ' ' + path, last = path.split('/').pop();
+  if (key === 'GET /api/me') return r({ id: '1', name: 'Ruthy', role: 'user', wa: { linked: true, up: true, number: '2348168593820', name: 'Ruthy' }, plan: { name: 'Monthly', expires: Date.now() + D.plan * 24 * h, expired: false, paused: false, daysLeft: D.plan }, usage: { today: 8, limit: 10, total: 142 }, counts: { contacts: 25716, groups: 496, scheduledPosts: D.posts.length, scheduledMessages: D.msgs.length, lists: 4 }, features: { post: true, schedule: true, messages: true, sending: true, lists: true, plan: true, insights: true } });
   if (key === 'GET /api/posts') return r({ posts: [...D.posts].sort((a, b) => a.at - b.at) });
   if (key === 'POST /api/posts') { if (body.when === 'later') { D.posts.push({ id: Date.now(), type: 'text', text: body.text, at: body.at, repeat: 'none', bg: body.bg }); return r({ scheduled: true, at: body.at }); } D.jobs.push({ id: Date.now(), type: 'status', preview: body.text.slice(0, 40), total: 2500, sent: 0, started: Date.now(), stopping: false }); return r({ started: true }); }
-  if (method === 'DELETE' && path.startsWith('/api/posts/')) { D.posts = D.posts.filter(p => String(p.id) !== path.split('/').pop()); return r({ ok: true }); }
-  if (key === 'GET /api/messages') return r({ messages: D.msgs });
-  if (method === 'DELETE' && path.startsWith('/api/messages/')) { D.msgs = D.msgs.filter(p => String(p.id) !== path.split('/').pop()); return r({ ok: true }); }
+  if (method === 'DELETE' && path.startsWith('/api/posts/')) { D.posts = D.posts.filter(p => String(p.id) !== last); return r({ ok: true }); }
+  if (method === 'POST' && /^\/api\/posts\/[^/]+\/edit$/.test(path)) { const p = D.posts.find(x => String(x.id) === path.split('/')[3]); if (p) { if (body.text !== undefined) p.text = body.text; if (body.at !== undefined) p.at = body.at; } return r({ ok: true }); }
+  if (key === 'GET /api/messages') return r({ messages: [...D.msgs].sort((a, b) => a.at - b.at) });
+  if (method === 'DELETE' && path.startsWith('/api/messages/')) { D.msgs = D.msgs.filter(p => String(p.id) !== last); return r({ ok: true }); }
+  if (method === 'POST' && /^\/api\/messages\/[^/]+\/edit$/.test(path)) { const m = D.msgs.find(x => String(x.id) === path.split('/')[3]); if (m) { if (body.text !== undefined) m.text = body.text; if (body.at !== undefined) m.at = body.at; } return r({ ok: true }); }
+  if (key === 'POST /api/messages') { const t = body.target, n = t.kind === 'numbers' ? t.numbers.length : t.kind === 'list' ? 184 : t.kind === 'grouplist' ? 6 : t.ids.length; if (body.when === 'later') { D.msgs.push({ id: Date.now(), type: 'text', text: body.text, at: body.at, repeat: 'none', target: { kind: t.kind, name: t.name, count: n } }); return r({ scheduled: true, at: body.at, recipients: n }); } D.jobs.push({ id: Date.now(), type: 'message', preview: body.text.slice(0, 40), total: n, sent: 0, started: Date.now(), stopping: false }); return r({ started: true, recipients: n }); }
+  if (key === 'GET /api/groups') { const term = (q.get('q') || '').toLowerCase(); return r({ groups: DG.filter(g => g.toLowerCase().includes(term)).map((g, i) => ({ id: 'g' + DG.indexOf(g), name: g, size: 40 + i * 37, admin: i % 3 === 0 })), total: 496 }); }
+  if (key === 'GET /api/channels') return r({ channels: [{ id: 'c1', name: 'Waapo News', role: 'OWNER' }] });
   if (key === 'GET /api/jobs') return r({ jobs: D.jobs });
   if (method === 'POST' && path.endsWith('/stop')) { const j = D.jobs.find(x => String(x.id) === path.split('/')[3]); if (j) { j.stopping = true; setTimeout(() => { D.jobs = D.jobs.filter(x => x !== j); }, 2500); } return r({ ok: true }); }
   if (key === 'GET /api/lists') return r({ numbers: [{ name: 'Customers', count: 184 }, { name: 'Family', count: 23 }], groups: [{ name: 'Church groups', count: 6 }, { name: 'Business groups', count: 12 }] });
+  if (key === 'GET /api/plans') return r({ online: true, email: '', general: { link: '', bank: '' }, plans: [{ id: 1, name: 'Weekly', price: '₦2,000', days: 7, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }, { id: 2, name: 'Monthly', price: '₦5,000', days: 30, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }] });
+  if (key === 'POST /api/pay') { if (!body.email) return Promise.reject(new Error('Enter a valid email address for the receipt.')); return r({ url: 'https://example.com/pay' }); }
+  if (key === 'GET /api/insights') return r({ hours: [0, 0, 0, 0, 0, 1, 2, 4, 7, 6, 5, 5, 6, 5, 4, 5, 6, 8, 11, 17, 21, 15, 7, 2], views7: 312, viewers7: 188, posts7: 9, totals: { posts: 142, viewers: 604, views: 5230 }, topViewers: [{ name: 'Ada Obi', number: '234801', views: 41, last: Date.now() }, { name: '', number: '234802', views: 33, last: Date.now() }, { name: 'Chidi', number: '234803', views: 29, last: Date.now() }], bestPosts: [{ preview: 'Black Friday is here', at: Date.now(), views: 233, sent: 2500 }, { preview: 'Good night everyone 🌙', at: Date.now(), views: 190, sent: 2400 }] });
   return r({});
 }
 
