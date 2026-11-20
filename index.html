@@ -101,6 +101,8 @@ input[type=text],input[type=email],input[type=search]{width:100%;font:inherit;co
 .big{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0}.big div b{display:block;font:700 26px var(--head)}.big div span{font-size:13px;color:var(--muted)}
 .pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0;font-size:15px}
 .price{font:700 20px var(--head)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.rows li .menu-row{padding:0;border:0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -118,7 +120,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COLORS = ['#128C7E', '#1E88E5', '#3949AB', '#8E24AA', '#D81B60', '#E53935', '#FB8C00', '#FDD835', '#43A047', '#263238'];
 const newNm = () => ({ text: '', kind: 'list', numbers: '', list: '', grouplist: '', channels: [], groups: {}, q: '', when: 'now', at: '' });
-const S = { me: null, posts: [], msgs: [], jobs: [], lists: null, plans: null, insights: null, channels: [], gres: [], tab: 'home', view: { messages: 'list', more: 'menu' }, color: COLORS[0], when: 'now', nm: newNm(), sheet: null, payWait: null };
+const S = { me: null, posts: [], msgs: [], jobs: [], lists: null, plans: null, insights: null, channels: [], gres: [], tab: 'home', view: { messages: 'list', more: 'menu' }, color: COLORS[0], when: 'now', nm: newNm(), sheet: null, payWait: null, listOpen: null, listDetail: null, newList: null, lg: { sel: {}, q: '', res: [] } };
 const ICONS = { home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>', posts: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>', messages: '<path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>', sending: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', more: '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>' };
 const LABEL = { home: 'Home', posts: 'Posts', messages: 'Messages', sending: 'Sending', more: 'More' };
 const CHEV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
@@ -143,7 +145,11 @@ const p2 = x => String(x).padStart(2, '0');
 const toLocalInput = ms => { const d = new Date(ms); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`; };
 const defaultWhen = () => { const d = new Date(Date.now() + 36e5); d.setMinutes(0, 0, 0); return toLocalInput(d.getTime()); };
 const hour12 = h => `${h % 12 || 12}${h < 12 ? ' AM' : ' PM'}`;
-const parseNums = s => [...new Set(String(s || '').split(/[\s,;]+/).map(x => x.replace(/\D/g, '')).filter(x => x.length >= 7 && x.length <= 15))];
+const parseNums = s => {                                  // "+234 801 111 1111" is one number; two numbers on one line are split
+  const good = [], take = x => { const d = x.replace(/\D/g, ''); if (d.length >= 7 && d.length <= 15) { good.push(d); return true; } return false; };
+  for (const tok of String(s || '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean)) { if (take(tok)) continue; const parts = tok.split(/\s+/); if (parts.length > 1) parts.forEach(take); }
+  return [...new Set(good)];
+};
 
 /* ---------- api (real or demo) ---------- */
 async function api(method, path, body) {
@@ -166,20 +172,21 @@ async function loadMe() { S.me = await api('GET', '/api/me'); }
 async function loadPosts() { if (need('schedule')) S.posts = (await api('GET', '/api/posts')).posts; }
 async function loadMsgs() { if (need('messages')) S.msgs = (await api('GET', '/api/messages')).messages; }
 async function loadJobs() { if (need('sending')) S.jobs = (await api('GET', '/api/jobs')).jobs; }
-async function loadLists() { if (need('lists') || need('messages')) { try { S.lists = await api('GET', '/api/lists'); } catch (e) { S.lists = S.lists || { numbers: [], groups: [] }; } } }
+async function loadLists() { if (need('lists') || need('glists') || need('messages')) { try { S.lists = await api('GET', '/api/lists'); } catch (e) { S.lists = S.lists || { numbers: [], groups: [] }; } } }
 async function loadChannels() { if (need('messages')) { try { S.channels = (await api('GET', '/api/channels')).channels; } catch (e) { S.channels = []; } } }
+async function loadListDetail() { const o = S.listOpen; S.listDetail = await api('GET', `/api/list?kind=${o.kind}&name=${encodeURIComponent(o.name)}`); }
 async function loadPlans() { if (need('plan')) S.plans = await api('GET', '/api/plans'); }
 async function loadInsights() { if (need('insights')) S.insights = await api('GET', '/api/insights'); }
 const loaders = {
   home: () => Promise.all([loadMe(), loadPosts(), loadJobs()]), posts: () => Promise.all([loadMe(), loadPosts()]),
   messages: async () => { await loadMsgs(); if (S.view.messages === 'new') await Promise.all([loadLists(), loadChannels()]); },
   sending: loadJobs,
-  more: async () => { const v = S.view.more; if (v === 'plan') await Promise.all([loadMe(), loadPlans()]); else if (v === 'insights') await loadInsights(); else if (v === 'lists') await loadLists(); else await loadMe(); }
+  more: async () => { const v = S.view.more; if (v === 'plan') await Promise.all([loadMe(), loadPlans()]); else if (v === 'insights') await loadInsights(); else if (v === 'lists') await loadLists(); else if (v === 'list') await loadListDetail(); else await loadMe(); }
 };
 
 /* ---------- screens ---------- */
 function tabs() {
-  const f = S.me.features, show = { home: true, posts: f.post || f.schedule, messages: f.messages, sending: f.sending, more: f.plan || f.insights || f.lists };
+  const f = S.me.features, show = { home: true, posts: f.post || f.schedule, messages: f.messages, sending: f.sending, more: f.plan || f.insights || f.lists || f.glists };
   $('#tabs').innerHTML = Object.keys(LABEL).filter(k => show[k]).map(k => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>${LABEL[k]}</button>`).join('');
   $('#nav').hidden = false;
 }
@@ -277,12 +284,12 @@ function jobsHTML() {
 }
 function moreHTML() {
   const v = S.view.more, f = S.me.features;
-  if (v === 'plan') return planHTML(); if (v === 'insights') return insightsHTML(); if (v === 'lists') return listsHTML();
+  if (v === 'plan') return planHTML(); if (v === 'insights') return insightsHTML(); if (v === 'lists') return listsHTML(); if (v === 'list') return listDetailHTML();
   const m = S.me, left = m.plan.expires ? (m.plan.expired ? 'ended' : `${m.plan.daysLeft} day${m.plan.daysLeft === 1 ? '' : 's'} left`) : '';
   return `<div class="top"><h1 style="font-size:24px">More</h1></div><div style="margin-top:8px">
 ${f.plan ? `<button class="menu-row" data-sub="plan"><div><b>Plan and payment</b><span>${esc(m.plan.name || 'Your plan')}${left ? ' · ' + left : ''}</span></div>${CHEV}</button>` : ''}
 ${f.insights ? `<button class="menu-row" data-sub="insights"><div><b>Insights</b><span>Who watches, and when</span></div>${CHEV}</button>` : ''}
-${f.lists ? `<button class="menu-row" data-sub="lists"><div><b>Lists</b><span>${fmtN(m.counts.lists)} saved</span></div>${CHEV}</button>` : ''}</div>`;
+${f.lists || f.glists ? `<button class="menu-row" data-sub="lists"><div><b>Lists</b><span>${fmtN(m.counts.lists)} saved</span></div>${CHEV}</button>` : ''}</div>`;
 }
 const backBtn = lab => `<div class="top"><button class="back" data-back="more">‹ ${lab}</button></div>`;
 function planHTML() {
@@ -312,9 +319,27 @@ function insightsHTML() {
 <h2>Most loyal viewers</h2>${viewers}<h2>Best posts</h2>${best}<p class="sub" style="margin-top:18px">Counts come from people who have read receipts on.</p>`;
 }
 function listsHTML() {
-  const L = S.lists || { numbers: [], groups: [] }, rows = a => a.length ? `<ul class="rows">${a.map(x => `<li><span>${esc(x.name)}</span><b>${fmtN(x.count)}</b></li>`).join('')}</ul>` : '<div class="empty">None yet.</div>';
-  return `${backBtn('More')}<h1 style="font-size:24px;margin-top:6px">Lists</h1><h2>People</h2>${rows(L.numbers)}<h2>Groups</h2>${rows(L.groups)}<p class="sub" style="margin-top:22px">Create and edit lists in the bot.</p>`;
+  const L = S.lists || { numbers: [], groups: [] }, f = S.me.features;
+  const rows = (kind, a) => a.length ? `<ul class="rows">${a.map(x => `<li><button class="menu-row" data-lk="${kind}" data-ln="${esc(x.name)}"><div><b style="font-size:17px">${esc(x.name)}</b></div><span>${fmtN(x.count)} ›</span></button></li>`).join('')}</ul>` : '<div class="empty">None yet.</div>';
+  const form = kind => S.newList === kind ? `<div style="margin:10px 0 0"><input type="text" id="lname" maxlength="30" placeholder="List name" aria-label="List name"><div class="two"><button class="btn ghost" data-newlist-cancel>Cancel</button><button class="btn" data-newlist-go>Create</button></div></div>` : `<button class="btn quiet" data-newlist="${kind}">+ New list</button>`;
+  return `${backBtn('More')}<h1 style="font-size:24px;margin-top:6px">Lists</h1>${f.lists ? `<h2>People</h2>${rows('numbers', L.numbers)}${form('numbers')}` : ''}${f.glists ? `<h2>Groups</h2>${rows('groups', L.groups)}${form('groups')}` : ''}`;
 }
+function listDetailHTML() {
+  const d = S.listDetail, isNum = d.kind === 'numbers', unit = isNum ? (d.total === 1 ? 'person' : 'people') : (d.total === 1 ? 'group' : 'groups');
+  const sub = m => isNum ? `${esc(m.name || '+' + m.number)}${m.name ? `<small style="display:block;color:var(--muted)">+${esc(m.number)}</small>` : ''}` : `${esc(m.name)}${m.gone ? '' : ` <small style="color:var(--muted)">· ${fmtN(m.size)}</small>`}`;
+  const members = d.members.length ? `<ul class="rows">${d.members.map(m => `<li><span>${sub(m)}</span><button class="link danger" data-lrm="${esc(isNum ? m.number : m.id)}">Remove</button></li>`).join('')}</ul>${d.total > d.members.length ? `<div class="sub">Showing the first ${d.members.length} of ${fmtN(d.total)}.</div>` : ''}` : '<div class="empty">Nothing in this list yet.</div>';
+  const add = isNum ? '<label class="lab" for="lnums">Add numbers</label><textarea id="lnums" placeholder="One number per line, with country code" style="min-height:100px"></textarea><div style="margin-top:10px"><button class="btn" data-addnums>Add numbers</button></div>'
+    : '<label class="lab" for="lgq">Add groups</label><input type="search" id="lgq" placeholder="Search your groups" aria-label="Search groups"><div id="lgres"></div><div style="margin-top:10px"><button class="btn" id="lgadd" data-lgadd disabled>Add selected</button></div>';
+  return `<div class="top"><button class="back" data-back="lists">‹ Lists</button></div><h1 style="font-size:24px;margin-top:6px">${esc(d.name)}</h1><div class="sub">${fmtN(d.total)} ${unit}</div>${add}<h2>In this list</h2>${members}<div style="margin-top:30px"><button class="link danger" data-ldel>Delete this list</button></div>`;
+}
+function lgresHTML() {
+  const inList = new Set(((S.listDetail || {}).members || []).map(m => m.id));
+  if (!S.lg.res.length) return '<div class="empty">No group matches.</div>';
+  return S.lg.res.map(g => inList.has(g.id) ? `<div class="pick"><span>${esc(g.name)}<small>Already in this list</small></span><i>✓</i></div>` : `<button class="pick" data-lgtoggle="${esc(g.id)}" aria-pressed="${!!S.lg.sel[g.id]}"><span>${esc(g.name)}<small>${fmtN(g.size)} members${g.admin ? ' · you admin' : ''}</small></span><i>${S.lg.sel[g.id] ? '✓' : ''}</i></button>`).join('');
+}
+async function searchListGroups(q) { try { S.lg.res = (await api('GET', '/api/groups?q=' + encodeURIComponent(q || ''))).groups; } catch (e) { S.lg.res = []; toast(e.message, true); } if ($('#lgres')) $('#lgres').innerHTML = lgresHTML(); }
+function lgUpdate() { const n = Object.keys(S.lg.sel).length, b = $('#lgadd'); if (b) { b.textContent = n ? `Add selected (${n})` : 'Add selected'; b.disabled = !n; } }
+function afterListRender() { if (S.tab === 'more' && S.view.more === 'list' && S.listDetail && S.listDetail.kind === 'groups') { if ($('#lgq')) $('#lgq').value = S.lg.q; searchListGroups(S.lg.q); lgUpdate(); } }
 function previewUpdate() {
   const pv = $('#pv'), t = $('#txt'); if (!pv) return; const v = t.value, n = v.length;
   pv.style.background = S.color; pv.style.color = ink(S.color); pv.style.fontSize = n > 300 ? '18px' : n > 140 ? '22px' : n > 60 ? '27px' : '34px';
@@ -344,6 +369,7 @@ async function show(tab, keep) {
   main.innerHTML = routeHTML(tab);
   if (tab === 'posts') { const at = $('#at'); if (at) { at.value = S.lastAt || defaultWhen(); at.min = defaultWhen(); } if ($('#txt')) { $('#txt').value = S.draft || ''; previewUpdate(); } $('#plist').innerHTML = plistHTML(); }
   if (tab === 'messages' && S.view.messages === 'new') { $('#mtxt').value = S.nm.text; const at = $('#mat'); if (at) { at.value = S.nm.at || defaultWhen(); S.nm.at = at.value; at.min = defaultWhen(); } renderTarget(); }
+  if (tab === 'more') afterListRender();
   if (!keep) window.scrollTo(0, 0);
 }
 async function refresh() {
@@ -365,6 +391,7 @@ document.addEventListener('input', e => {
   else if (id === 'mtxt') { S.nm.text = t.value; nmUpdate(); }
   else if (id === 'mat') { S.nm.at = t.value; nmUpdate(); }
   else if (id === 'nums') { S.nm.numbers = t.value; nmUpdate(); }
+  else if (id === 'lgq') { S.lg.q = t.value; clearTimeout(gTimer); gTimer = setTimeout(() => searchListGroups(S.lg.q), 300); }
   else if (id === 'gq') { S.nm.q = t.value; clearTimeout(gTimer); gTimer = setTimeout(() => searchGroups(S.nm.q), 300); }
 });
 document.addEventListener('click', async e => {
@@ -412,6 +439,25 @@ document.addEventListener('click', async e => {
       return;
     }
     /* more */
+    if (d.lk !== undefined) { S.listOpen = { kind: d.lk, name: d.ln }; S.lg = { sel: {}, q: '', res: [] }; S.view.more = 'list'; return show('more'); }
+    if (d.newlist !== undefined) { S.newList = d.newlist; $('#main').innerHTML = moreHTML(); const i = $('#lname'); if (i && i.focus) i.focus(); return; }
+    if (d.newlistCancel !== undefined) { S.newList = null; $('#main').innerHTML = moreHTML(); return; }
+    if (d.newlistGo !== undefined) { const kind = S.newList, name = $('#lname').value.trim(); await api('POST', '/api/lists', { kind, name }); buzz(); toast('List created'); S.listOpen = { kind, name }; S.newList = null; S.lg = { sel: {}, q: '', res: [] }; S.view.more = 'list'; return show('more'); }
+    if (d.addnums !== undefined) {
+      const nums = parseNums($('#lnums').value); if (!nums.length) { toast('Add at least one valid number with country code.', true); return; }
+      b.disabled = true; let added = 0;
+      try { for (let i = 0; i < nums.length; i += 800) { const r = await api('POST', '/api/lists/add', { kind: 'numbers', name: S.listOpen.name, items: nums.slice(i, i + 800) }); added += r.added; } } finally { b.disabled = false; }
+      buzz(); toast(`Added ${fmtN(added)}${nums.length > added ? `, ${fmtN(nums.length - added)} already there` : ''}`); await loadListDetail(); $('#main').innerHTML = listDetailHTML(); return;
+    }
+    if (d.lgtoggle !== undefined) { const g = S.lg.res.find(x => x.id === d.lgtoggle); if (S.lg.sel[d.lgtoggle]) delete S.lg.sel[d.lgtoggle]; else S.lg.sel[d.lgtoggle] = g ? g.name : d.lgtoggle; $('#lgres').innerHTML = lgresHTML(); return lgUpdate(); }
+    if (d.lgadd !== undefined) { b.disabled = true; const r = await api('POST', '/api/lists/add', { kind: 'groups', name: S.listOpen.name, items: Object.keys(S.lg.sel) }); S.lg.sel = {}; buzz(); toast(`Added ${r.added} group${r.added === 1 ? '' : 's'}`); await loadListDetail(); $('#main').innerHTML = listDetailHTML(); afterListRender(); return; }
+    if (d.lrm !== undefined) { await api('POST', '/api/lists/remove', { kind: S.listOpen.kind, name: S.listOpen.name, items: [d.lrm] }); buzz(); await loadListDetail(); $('#main').innerHTML = listDetailHTML(); afterListRender(); return; }
+    if (d.ldel !== undefined) {
+      const u = S.listDetail.used || 0;
+      if (!(await confirmAsk(`Delete “${S.listOpen.name}”?${u ? ` ${u} scheduled message${u === 1 ? '' : 's'} use it and will not send.` : ''}`))) return;
+      await api('POST', '/api/lists/delete', { kind: S.listOpen.kind, name: S.listOpen.name }); buzz(); toast('List deleted'); S.listOpen = null; S.view.more = 'lists'; return show('more');
+    }
+    if (d.back === 'lists') { S.view.more = 'lists'; S.listOpen = null; return show('more'); }
     if (d.sub) { S.view.more = d.sub; return show('more'); }
     if (d.back === 'more') { S.view.more = 'menu'; return show('more'); }
     if (d.pay !== undefined) {
@@ -424,16 +470,17 @@ document.addEventListener('click', async e => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheet) closeSheet(); });
 
 /* ---------- demo data (used for ?demo and the preview page) ---------- */
-const D = { posts: null, msgs: null, jobs: null, plan: 5 };
+const D = { posts: null, msgs: null, jobs: null, plan: 5, lists: null };
 const DG = ['Church Youth', 'Church Choir', 'Business Owners', 'Lagos Traders', 'Family Circle', 'Old School Friends', 'Alumni 2012', 'Football Fans', 'Neighbours Watch', 'Online Sellers'];
 function demo(method, full, body) {
   const [path, qs] = full.split('?'), h = 36e5, q = new URLSearchParams(qs || '');
   D.posts ||= [{ id: 1, type: 'text', text: 'Good night everyone 🌙 see you tomorrow', at: Date.now() + 3.2 * h, repeat: 'daily', bg: '#263238' }, { id: 2, type: 'text', text: 'Weekend sale starts at 9 AM. Everything 20% off.', at: Date.now() + 15 * h, repeat: 'none', bg: '#E53935' }, { id: 3, type: 'image', text: 'New arrivals are in', at: Date.now() + 52 * h, repeat: 'weekly', bg: null }];
   D.msgs ||= [{ id: 11, type: 'text', text: 'Happy new week 🙏 Wishing you grace and favour.', at: Date.now() + 28 * h, repeat: 'weekly', target: { kind: 'grouplist', name: 'Church groups', count: 6 } }, { id: 12, type: 'image', text: 'Event invite: Saturday 4 PM', at: Date.now() + 70 * h, repeat: 'none', target: { kind: 'list', name: 'Customers', count: 184 } }];
+  D.lists ||= { numbers: { Customers: Array.from({ length: 184 }, (_, i) => '23480' + String(11110000 + i)), Family: ['2348012340001', '2348012340002', '2348012340003'] }, groups: { 'Church groups': ['g0', 'g1', 'g4', 'g5', 'g6', 'g8'], 'Business groups': ['g2', 'g3', 'g9', 'g7'] } };
   D.jobs ||= [{ id: 21, type: 'status', preview: 'Black Friday is here', total: 2500, sent: 1180, started: Date.now() - 6 * 60000, stopping: false }];
   D.jobs.forEach(j => { if (!j.stopping && j.sent < j.total) j.sent = Math.min(j.total, j.sent + 70); });
   const r = v => new Promise(res => setTimeout(() => res(v), 120)), key = method + ' ' + path, last = path.split('/').pop();
-  if (key === 'GET /api/me') return r({ id: '1', name: 'Ruthy', role: 'user', wa: { linked: true, up: true, number: '2348168593820', name: 'Ruthy' }, plan: { name: 'Monthly', expires: Date.now() + D.plan * 24 * h, expired: false, paused: false, daysLeft: D.plan }, usage: { today: 8, limit: 10, total: 142 }, counts: { contacts: 25716, groups: 496, scheduledPosts: D.posts.length, scheduledMessages: D.msgs.length, lists: 4 }, features: { post: true, schedule: true, messages: true, sending: true, lists: true, plan: true, insights: true } });
+  if (key === 'GET /api/me') return r({ id: '1', name: 'Ruthy', role: 'user', wa: { linked: true, up: true, number: '2348168593820', name: 'Ruthy' }, plan: { name: 'Monthly', expires: Date.now() + D.plan * 24 * h, expired: false, paused: false, daysLeft: D.plan }, usage: { today: 8, limit: 10, total: 142 }, counts: { contacts: 25716, groups: 496, scheduledPosts: D.posts.length, scheduledMessages: D.msgs.length, lists: 4 }, features: { post: true, schedule: true, messages: true, sending: true, lists: true, glists: true, plan: true, insights: true } });
   if (key === 'GET /api/posts') return r({ posts: [...D.posts].sort((a, b) => a.at - b.at) });
   if (key === 'POST /api/posts') { if (body.when === 'later') { D.posts.push({ id: Date.now(), type: 'text', text: body.text, at: body.at, repeat: 'none', bg: body.bg }); return r({ scheduled: true, at: body.at }); } D.jobs.push({ id: Date.now(), type: 'status', preview: body.text.slice(0, 40), total: 2500, sent: 0, started: Date.now(), stopping: false }); return r({ started: true }); }
   if (method === 'DELETE' && path.startsWith('/api/posts/')) { D.posts = D.posts.filter(p => String(p.id) !== last); return r({ ok: true }); }
@@ -446,7 +493,14 @@ function demo(method, full, body) {
   if (key === 'GET /api/channels') return r({ channels: [{ id: 'c1', name: 'Waapo News', role: 'OWNER' }] });
   if (key === 'GET /api/jobs') return r({ jobs: D.jobs });
   if (method === 'POST' && path.endsWith('/stop')) { const j = D.jobs.find(x => String(x.id) === path.split('/')[3]); if (j) { j.stopping = true; setTimeout(() => { D.jobs = D.jobs.filter(x => x !== j); }, 2500); } return r({ ok: true }); }
-  if (key === 'GET /api/lists') return r({ numbers: [{ name: 'Customers', count: 184 }, { name: 'Family', count: 23 }], groups: [{ name: 'Church groups', count: 6 }, { name: 'Business groups', count: 12 }] });
+  const cnt = o => Object.entries(o).map(([name, v]) => ({ name, count: v.length }));
+  if (key === 'GET /api/lists') return r({ numbers: cnt(D.lists.numbers), groups: cnt(D.lists.groups) });
+  if (key === 'GET /api/list') { const kind = q.get('kind'), name = q.get('name'), L = D.lists[kind] && D.lists[kind][name]; if (!L) return Promise.reject(new Error('That list no longer exists.')); const used = D.msgs.filter(m => m.target && m.target.name === name).length;
+    return r({ kind, name, total: L.length, used, members: kind === 'numbers' ? L.slice(0, 200).map(n => ({ number: n, name: { '2348011111111': 'Ada Obi', '2348022222222': 'Chidi Eze', '2348012340001': 'Bola' }[n] || '' })) : L.slice(0, 200).map(id => ({ id, name: DG[+id.slice(1)] || 'A group you have left', size: 40 + (+id.slice(1)) * 37 })) }); }
+  if (key === 'POST /api/lists') { const L = D.lists[body.kind]; if (!body.name || !body.name.trim()) return Promise.reject(new Error('Give the list a name of 1 to 30 characters.')); if (L[body.name.trim()]) return Promise.reject(new Error('You already have a list with that name.')); L[body.name.trim()] = []; return r({ ok: true, name: body.name.trim(), total: 0, skipped: 0 }); }
+  if (key === 'POST /api/lists/add') { const L = D.lists[body.kind][body.name]; if (!L) return Promise.reject(new Error('That list no longer exists.')); const before = new Set(L), add = [...new Set((body.items || []).filter(x => !before.has(x)))]; L.push(...add); return r({ ok: true, added: add.length, skipped: 0, total: L.length }); }
+  if (key === 'POST /api/lists/remove') { const L = D.lists[body.kind][body.name], n = L.length; D.lists[body.kind][body.name] = L.filter(x => !(body.items || []).includes(x)); return r({ ok: true, removed: n - D.lists[body.kind][body.name].length, total: D.lists[body.kind][body.name].length }); }
+  if (key === 'POST /api/lists/delete') { delete D.lists[body.kind][body.name]; return r({ ok: true }); }
   if (key === 'GET /api/plans') return r({ online: true, email: '', general: { link: '', bank: '' }, plans: [{ id: 1, name: 'Weekly', price: '₦2,000', days: 7, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }, { id: 2, name: 'Monthly', price: '₦5,000', days: 30, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }] });
   if (key === 'POST /api/pay') { if (!body.email) return Promise.reject(new Error('Enter a valid email address for the receipt.')); return r({ url: 'https://example.com/pay' }); }
   if (key === 'GET /api/insights') return r({ hours: [0, 0, 0, 0, 0, 1, 2, 4, 7, 6, 5, 5, 6, 5, 4, 5, 6, 8, 11, 17, 21, 15, 7, 2], views7: 312, viewers7: 188, posts7: 9, totals: { posts: 142, viewers: 604, views: 5230 }, topViewers: [{ name: 'Ada Obi', number: '234801', views: 41, last: Date.now() }, { name: '', number: '234802', views: 33, last: Date.now() }, { name: 'Chidi', number: '234803', views: 29, last: Date.now() }], bestPosts: [{ preview: 'Black Friday is here', at: Date.now(), views: 233, sent: 2500 }, { preview: 'Good night everyone 🌙', at: Date.now(), views: 190, sent: 2400 }] });
