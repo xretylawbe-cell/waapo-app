@@ -175,13 +175,14 @@ async function loadJobs() { if (need('sending')) S.jobs = (await api('GET', '/ap
 async function loadLists() { if (need('lists') || need('glists') || need('messages')) { try { S.lists = await api('GET', '/api/lists'); } catch (e) { S.lists = S.lists || { numbers: [], groups: [] }; } } }
 async function loadChannels() { if (need('messages')) { try { S.channels = (await api('GET', '/api/channels')).channels; } catch (e) { S.channels = []; } } }
 async function loadListDetail() { const o = S.listOpen; S.listDetail = await api('GET', `/api/list?kind=${o.kind}&name=${encodeURIComponent(o.name)}`); }
+async function loadAccount() { S.acct = await api('GET', '/api/account'); }
 async function loadPlans() { if (need('plan')) S.plans = await api('GET', '/api/plans'); }
 async function loadInsights() { if (need('insights')) S.insights = await api('GET', '/api/insights'); }
 const loaders = {
   home: () => Promise.all([loadMe(), loadPosts(), loadJobs()]), posts: () => Promise.all([loadMe(), loadPosts()]),
   messages: async () => { await loadMsgs(); if (S.view.messages === 'new') await Promise.all([loadLists(), loadChannels()]); },
   sending: loadJobs,
-  more: async () => { const v = S.view.more; if (v === 'plan') await Promise.all([loadMe(), loadPlans()]); else if (v === 'insights') await loadInsights(); else if (v === 'lists') await loadLists(); else if (v === 'list') await loadListDetail(); else await loadMe(); }
+  more: async () => { const v = S.view.more; if (v === 'plan') await Promise.all([loadMe(), loadPlans()]); else if (v === 'insights') await loadInsights(); else if (v === 'lists') await loadLists(); else if (v === 'list') await loadListDetail(); else if (v === 'account') await Promise.all([loadMe(), loadAccount()]); else await loadMe(); }
 };
 
 /* ---------- screens ---------- */
@@ -284,12 +285,21 @@ function jobsHTML() {
 }
 function moreHTML() {
   const v = S.view.more, f = S.me.features;
-  if (v === 'plan') return planHTML(); if (v === 'insights') return insightsHTML(); if (v === 'lists') return listsHTML(); if (v === 'list') return listDetailHTML();
+  if (v === 'account') return accountHTML(); if (v === 'plan') return planHTML(); if (v === 'insights') return insightsHTML(); if (v === 'lists') return listsHTML(); if (v === 'list') return listDetailHTML();
   const m = S.me, left = m.plan.expires ? (m.plan.expired ? 'ended' : `${m.plan.daysLeft} day${m.plan.daysLeft === 1 ? '' : 's'} left`) : '';
   return `<div class="top"><h1 style="font-size:24px">More</h1></div><div style="margin-top:8px">
+<button class="menu-row" data-sub="account"><div><b>WhatsApp connection</b><span>${m.wa.up ? 'Connected' + (m.wa.number ? ' · +' + esc(m.wa.number) : '') : m.wa.linked ? 'Reconnecting…' : 'Not linked. Tap to link'}</span></div>${CHEV}</button>
 ${f.plan ? `<button class="menu-row" data-sub="plan"><div><b>Plan and payment</b><span>${esc(m.plan.name || 'Your plan')}${left ? ' · ' + left : ''}</span></div>${CHEV}</button>` : ''}
 ${f.insights ? `<button class="menu-row" data-sub="insights"><div><b>Insights</b><span>Who watches, and when</span></div>${CHEV}</button>` : ''}
 ${f.lists || f.glists ? `<button class="menu-row" data-sub="lists"><div><b>Lists</b><span>${fmtN(m.counts.lists)} saved</span></div>${CHEV}</button>` : ''}</div>`;
+}
+function accountHTML() {
+  const a = S.acct, w = a.wa, st = w.up ? 'Connected' + (w.number ? ' · +' + esc(w.number) : '') : w.linked ? 'Linked, reconnecting…' : 'Not linked';
+  const link = w.linked ? '' : `<h2>Link WhatsApp</h2>${a.code ? `<div class="empty"><b style="font:700 30px var(--head);letter-spacing:2px">${esc(a.code.match(/.{1,4}/g).join('-'))}</b>On your phone open WhatsApp → Linked devices → Link with phone number, then type this code. It expires in about 2 minutes.</div>` : `<label class="lab" for="lphone">Your WhatsApp number, with country code</label><input type="tel" id="lphone" inputmode="numeric" placeholder="2348012345678"><div style="margin-top:10px"><button class="btn" data-linkgo>Get code</button></div>`}`;
+  const row = (k, key, lab) => a.can[k] ? `<button class="menu-row" data-tog="${key}"><div><b>${lab}</b><span>${a[key] ? 'On' : 'Off'}</span></div></button>` : '';
+  const sw = row('alerts', 'alerts', 'Alerts') + row('weekly', 'weekly', 'Weekly report') + row('prune', 'autoPrune', 'Auto-prune');
+  const hl = a.health.length ? a.health.map(e => `<li><div class="menu-row"><div><b style="font-size:15px">${esc(e.kind)}</b><span>${dayLabel(e.t)}, ${clock(e.t)}${e.detail ? ' · ' + esc(e.detail) : ''}</span></div></div></li>`).join('') : '<li><div class="menu-row"><div><span>No problems recorded.</span></div></div></li>';
+  return `${backBtn('More')}<h1 style="font-size:24px">WhatsApp connection</h1><p style="color:var(--muted)">${st}</p>${link}${sw ? `<h2>Settings</h2><div>${sw}</div>` : ''}${w.linked ? `<div class="two" style="margin-top:14px">${a.can.repair ? '<button class="btn ghost" data-repair>Repair session</button>' : ''}<button class="btn ghost" data-unlink>Unlink</button></div>` : ''}<h2>Session health</h2><ul class="rows">${hl}</ul>`;
 }
 const backBtn = lab => `<div class="top"><button class="back" data-back="more">‹ ${lab}</button></div>`;
 function planHTML() {
@@ -458,6 +468,10 @@ document.addEventListener('click', async e => {
       await api('POST', '/api/lists/delete', { kind: S.listOpen.kind, name: S.listOpen.name }); buzz(); toast('List deleted'); S.listOpen = null; S.view.more = 'lists'; return show('more');
     }
     if (d.back === 'lists') { S.view.more = 'lists'; S.listOpen = null; return show('more'); }
+    if (d.linkgo !== undefined) { b.disabled = true; try { await api('POST', '/api/link', { phone: $('#lphone').value }); toast('Requesting your code…'); setTimeout(async () => { try { await loadAccount(); if (S.tab === 'more' && S.view.more === 'account') $('#main').innerHTML = accountHTML(); } catch (x) {} }, 3000); } catch (x) { b.disabled = false; throw x; } return; }
+    if (d.tog) { await api('POST', '/api/account/toggle', { key: d.tog }); buzz(); await loadAccount(); $('#main').innerHTML = accountHTML(); return; }
+    if (d.repair !== undefined && await confirmAsk('Repair the WhatsApp session? You stay logged in.')) { await api('POST', '/api/repair'); buzz(); toast('Repaired. Reconnecting…'); await loadAccount(); $('#main').innerHTML = accountHTML(); return; }
+    if (d.unlink !== undefined && await confirmAsk('Unlink WhatsApp from this account?')) { await api('POST', '/api/unlink'); buzz(); toast('Unlinked'); await Promise.all([loadMe(), loadAccount()]); $('#main').innerHTML = accountHTML(); return; }
     if (d.sub) { S.view.more = d.sub; return show('more'); }
     if (d.back === 'more') { S.view.more = 'menu'; return show('more'); }
     if (d.pay !== undefined) {
@@ -504,9 +518,14 @@ function demo(method, full, body) {
   if (key === 'GET /api/plans') return r({ online: true, email: '', general: { link: '', bank: '' }, plans: [{ id: 1, name: 'Weekly', price: '₦2,000', days: 7, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }, { id: 2, name: 'Monthly', price: '₦5,000', days: 30, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }] });
   if (key === 'POST /api/pay') { if (!body.email) return Promise.reject(new Error('Enter a valid email address for the receipt.')); return r({ url: 'https://example.com/pay' }); }
   if (key === 'GET /api/insights') return r({ hours: [0, 0, 0, 0, 0, 1, 2, 4, 7, 6, 5, 5, 6, 5, 4, 5, 6, 8, 11, 17, 21, 15, 7, 2], views7: 312, viewers7: 188, posts7: 9, totals: { posts: 142, viewers: 604, views: 5230 }, topViewers: [{ name: 'Ada Obi', number: '234801', views: 41, last: Date.now() }, { name: '', number: '234802', views: 33, last: Date.now() }, { name: 'Chidi', number: '234803', views: 29, last: Date.now() }], bestPosts: [{ preview: 'Black Friday is here', at: Date.now(), views: 233, sent: 2500 }, { preview: 'Good night everyone 🌙', at: Date.now(), views: 190, sent: 2400 }] });
+  if (key === 'GET /api/account') return r({ wa: { linked: true, up: true, number: '2348012345678' }, alerts: true, weekly: true, autoPrune: false, can: { alerts: true, weekly: true, prune: true, repair: true }, health: [{ t: Date.now() - 36e5, kind: 'groups synced', detail: '501 groups' }, { t: Date.now() - 5 * 36e5, kind: 'reconnect', detail: 'code 515' }], code: null });
   return r({});
 }
 
+async function pollAcct() {                            // while linking: show the code and the Connected state as soon as they happen
+  if (document.hidden || S.tab !== 'more' || S.view.more !== 'account' || !S.acct) return;
+  const o = S.acct; try { await loadAccount(); if (o.code !== S.acct.code || o.wa.up !== S.acct.wa.up || o.wa.linked !== S.acct.wa.linked) $('#main').innerHTML = accountHTML(); } catch (x) {}
+}
 /* ---------- start ---------- */
 async function start() {
   const main = $('#main');
@@ -523,7 +542,7 @@ async function start() {
   if (err) { main.innerHTML = `<div class="full"><h1>Can’t open the app</h1><p>${esc(err.message)}</p><button class="btn quiet" onclick="location.reload()">Try again</button></div>`; return; }
   await show('home');
   setInterval(refresh, 30000); document.addEventListener('visibilitychange', refresh);
-  setInterval(() => { if (S.tab === 'sending') refresh(); }, 4000);
+  setInterval(() => { if (S.tab === 'sending') refresh(); pollAcct(); }, 4000);
 }
 start();
 })();
