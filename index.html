@@ -120,7 +120,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COLORS = ['#128C7E', '#1E88E5', '#3949AB', '#8E24AA', '#D81B60', '#E53935', '#FB8C00', '#FDD835', '#43A047', '#263238'];
 const newNm = () => ({ text: '', kind: 'list', numbers: '', list: '', grouplist: '', channels: [], groups: {}, q: '', when: 'now', at: '' });
-const S = { me: null, posts: [], msgs: [], jobs: [], lists: null, plans: null, insights: null, channels: [], gres: [], tab: 'home', view: { messages: 'list', more: 'menu' }, color: COLORS[0], when: 'now', nm: newNm(), sheet: null, payWait: null, listOpen: null, listDetail: null, newList: null, lg: { sel: {}, q: '', res: [] } };
+const S = { me: null, posts: [], msgs: [], jobs: [], lists: null, plans: null, insights: null, channels: [], gres: [], tab: 'home', view: { messages: 'list', more: 'menu' }, color: COLORS[0], when: 'now', nm: newNm(), sheet: null, payWait: null, listOpen: null, listDetail: null, newList: null, lg: { sel: {}, q: '', res: [] }, ptype: 'text', media: null, cols: [], tpls: [], hist: [], tplOpen: null };
 const ICONS = { home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>', posts: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>', messages: '<path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>', sending: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', more: '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>' };
 const LABEL = { home: 'Home', posts: 'Posts', messages: 'Messages', sending: 'Sending', more: 'More' };
 const CHEV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
@@ -175,14 +175,21 @@ async function loadJobs() { if (need('sending')) S.jobs = (await api('GET', '/ap
 async function loadLists() { if (need('lists') || need('glists') || need('messages')) { try { S.lists = await api('GET', '/api/lists'); } catch (e) { S.lists = S.lists || { numbers: [], groups: [] }; } } }
 async function loadChannels() { if (need('messages')) { try { S.channels = (await api('GET', '/api/channels')).channels; } catch (e) { S.channels = []; } } }
 async function loadListDetail() { const o = S.listOpen; S.listDetail = await api('GET', `/api/list?kind=${o.kind}&name=${encodeURIComponent(o.name)}`); }
+async function loadCols() { if (need('col')) { try { S.cols = (await api('GET', '/api/colours')).colors; } catch (x) { S.cols = []; } } }
+async function loadTpls() { S.tpls = (await api('GET', '/api/templates')).templates; }
+async function loadHist() { S.hist = (await api('GET', '/api/history')).posts; }
+async function loadInbox() { S.inbox = await api('GET', '/api/inbox'); }
+async function loadRef() { S.ref = await api('GET', '/api/referral'); }
+async function loadAllGroups() { S.allg = await api('GET', '/api/groups/all'); }
+async function loadExcl() { S.excl = (await api('GET', '/api/exclusions')).numbers; }
 async function loadAccount() { S.acct = await api('GET', '/api/account'); }
 async function loadPlans() { if (need('plan')) S.plans = await api('GET', '/api/plans'); }
 async function loadInsights() { if (need('insights')) S.insights = await api('GET', '/api/insights'); }
 const loaders = {
-  home: () => Promise.all([loadMe(), loadPosts(), loadJobs()]), posts: () => Promise.all([loadMe(), loadPosts()]),
+  home: () => Promise.all([loadMe(), loadPosts(), loadJobs()]), posts: async () => { await Promise.all([loadMe(), loadPosts()]); await loadCols(); },
   messages: async () => { await loadMsgs(); if (S.view.messages === 'new') await Promise.all([loadLists(), loadChannels()]); },
   sending: loadJobs,
-  more: async () => { const v = S.view.more; if (v === 'plan') await Promise.all([loadMe(), loadPlans()]); else if (v === 'insights') await loadInsights(); else if (v === 'lists') await loadLists(); else if (v === 'list') await loadListDetail(); else if (v === 'account') await Promise.all([loadMe(), loadAccount()]); else await loadMe(); }
+  more: async () => { const v = S.view.more; if (v === 'plan') await Promise.all([loadMe(), loadPlans()]); else if (v === 'insights') await loadInsights(); else if (v === 'lists') await loadLists(); else if (v === 'list') await loadListDetail(); else if (v === 'account') await Promise.all([loadMe(), loadAccount()]); else if (v === 'tpl') await loadTpls(); else if (v === 'cols') await loadCols(); else if (v === 'hist') await loadHist(); else if (v === 'inbox') await loadInbox(); else if (v === 'ref') await loadRef(); else if (v === 'groups') await loadAllGroups(); else if (v === 'excl') await loadExcl(); else await loadMe(); }
 };
 
 /* ---------- screens ---------- */
@@ -207,21 +214,25 @@ ${nextHTML}
 <li><span>Plan${m.plan.name ? ' · ' + esc(m.plan.name) : ''}</span><b>${planLine}</b></li>
 <li><span>Contacts</span><b>${fmtN(m.counts.contacts)}</b></li><li><span>Groups</span><b>${fmtN(m.counts.groups)}</b></li><li><span>Lists</span><b>${fmtN(m.counts.lists)}</b></li></ul>`;
 }
+const ACC = { image: 'image/jpeg,image/png', video: 'video/mp4', audio: 'audio/mpeg,audio/ogg,.mp3,.ogg' };
 function postsHTML() {
-  const f = S.me.features, later = S.when === 'later';
-  const composer = f.post ? `<div class="top"><h1 style="font-size:24px">Write a status</h1></div>
-<div class="preview" id="pv"></div>
-<div class="swatches" role="radiogroup" aria-label="Background colour">${COLORS.map(c => `<button class="sw" role="radio" aria-checked="${c === S.color}" aria-label="${c}" data-color="${c}" style="background:${c}"></button>`).join('')}</div>
+  const f = S.me.features, later = S.when === 'later', t = f.media ? S.ptype : 'text', med = t !== 'text', cols = [...new Set([...COLORS, ...S.cols.map(c => c.hex)])];
+  const types = f.media ? `<div class="seg" role="group" aria-label="Post type" style="grid-template-columns:repeat(4,1fr)">${[['text', 'Text'], ['image', 'Photo'], ['video', 'Video'], ['audio', 'Audio']].map(([k, l]) => `<button data-ptype="${k}" aria-pressed="${t === k}">${l}</button>`).join('')}</div>` : '';
+  const body = med ? `<label class="lab" for="mfile">Choose a ${{ image: 'photo (JPG or PNG)', video: 'video (MP4, up to 16 MB)', audio: 'voice note or song (MP3 or OGG)' }[t]}</label><input type="file" id="mfile" accept="${ACC[t]}"><div id="mprev" style="margin:12px 0"></div>${t !== 'audio' ? '<textarea id="cap" maxlength="700" placeholder="Add a caption (optional)" aria-label="Caption"></textarea>' : ''}`
+    : `<div class="preview" id="pv"></div>
+<div class="swatches" role="radiogroup" aria-label="Background colour">${cols.map(c => `<button class="sw" role="radio" aria-checked="${c === S.color}" aria-label="${c}" data-color="${c}" style="background:${c}"></button>`).join('')}</div>
 <textarea id="txt" maxlength="700" placeholder="Write your status" aria-label="Status text"></textarea>
-<div class="meta"><span id="cnt">0 of 700</span><span>Goes to your whole audience</span></div>
+<div class="meta"><span id="cnt">0 of 700</span><span>Goes to your whole audience</span></div>`;
+  const composer = f.post ? `<div class="top"><h1 style="font-size:24px">${med ? 'Share a ' + { image: 'photo', video: 'video', audio: 'voice note' }[t] : 'Write a status'}</h1></div>${types}${body}
 <div class="seg" role="group" aria-label="When"><button data-when="now" aria-pressed="${!later}">Now</button><button data-when="later" aria-pressed="${later}">Later</button></div>
 ${later ? '<input type="datetime-local" id="at" aria-label="Date and time" style="margin-bottom:12px">' : ''}
-<button class="btn" id="go" disabled>${later ? 'Schedule post' : 'Post now'}</button>` : '';
+${f.tpl ? '<input type="text" id="tname" maxlength="30" placeholder="Save as a template (optional name)" aria-label="Template name" style="margin-bottom:12px">' : ''}
+<button class="btn" id="${med ? 'mgo' : 'go'}" disabled>${later ? 'Schedule post' : 'Post now'}</button>` : '';
   return `${composer}<h2>Scheduled</h2><div id="plist"></div>`;
 }
 function plistHTML() {
   if (!S.posts.length) return '<div class="empty"><b>Nothing scheduled</b>Posts you schedule appear here.</div>';
-  return S.posts.map(p => `<div class="item"><div class="t">${dayLabel(p.at)}, ${clock(p.at)}</div><div class="x">${esc(p.text || p.type)}</div><div class="row">${p.repeat && p.repeat !== 'none' ? `<span class="tag">Repeats ${esc(p.repeat)}</span>` : '<span></span>'}<span><button class="link" data-edit-post="${esc(p.id)}">Edit</button> &nbsp; <button class="link danger" data-cancel-post="${esc(p.id)}">Cancel</button></span></div></div>`).join('');
+  return S.posts.map(p => `<div class="item"><div class="t">${dayLabel(p.at)}, ${clock(p.at)}</div><div class="x">${p.type !== 'text' ? `<b>${{ image: 'Photo', video: 'Video', audio: 'Audio' }[p.type] || esc(p.type)}</b> ` : ''}${esc(p.text)}</div><div class="row">${p.repeat && p.repeat !== 'none' ? `<span class="tag">Repeats ${esc(p.repeat)}</span>` : '<span></span>'}<span><button class="link" data-edit-post="${esc(p.id)}">Edit</button> &nbsp; <button class="link danger" data-cancel-post="${esc(p.id)}">Cancel</button></span></div></div>`).join('');
 }
 function targetText(t) { if (!t) return ''; const n = t.count; return { numbers: `${n} number${n === 1 ? '' : 's'}`, list: `list “${esc(t.name)}”`, groups: `${n} group${n === 1 ? '' : 's'}`, grouplist: `group list “${esc(t.name)}”`, channels: `${n} channel${n === 1 ? '' : 's'}` }[t.kind] || ''; }
 function msgsHTML() {
@@ -285,13 +296,51 @@ function jobsHTML() {
 }
 function moreHTML() {
   const v = S.view.more, f = S.me.features;
-  if (v === 'account') return accountHTML(); if (v === 'plan') return planHTML(); if (v === 'insights') return insightsHTML(); if (v === 'lists') return listsHTML(); if (v === 'list') return listDetailHTML();
+  if (v === 'tpl') return tplHTML(); if (v === 'cols') return colHTML(); if (v === 'hist') return histHTML(); if (v === 'inbox') return inboxHTML(); if (v === 'ref') return refHTML(); if (v === 'groups') return groupsHTML(); if (v === 'excl') return exclHTML(); if (v === 'account') return accountHTML(); if (v === 'plan') return planHTML(); if (v === 'insights') return insightsHTML(); if (v === 'lists') return listsHTML(); if (v === 'list') return listDetailHTML();
   const m = S.me, left = m.plan.expires ? (m.plan.expired ? 'ended' : `${m.plan.daysLeft} day${m.plan.daysLeft === 1 ? '' : 's'} left`) : '';
   return `<div class="top"><h1 style="font-size:24px">More</h1></div><div style="margin-top:8px">
 <button class="menu-row" data-sub="account"><div><b>WhatsApp connection</b><span>${m.wa.up ? 'Connected' + (m.wa.number ? ' · +' + esc(m.wa.number) : '') : m.wa.linked ? 'Reconnecting…' : 'Not linked. Tap to link'}</span></div>${CHEV}</button>
 ${f.plan ? `<button class="menu-row" data-sub="plan"><div><b>Plan and payment</b><span>${esc(m.plan.name || 'Your plan')}${left ? ' · ' + left : ''}</span></div>${CHEV}</button>` : ''}
 ${f.insights ? `<button class="menu-row" data-sub="insights"><div><b>Insights</b><span>Who watches, and when</span></div>${CHEV}</button>` : ''}
+${f.tpl ? `<button class="menu-row" data-sub="tpl"><div><b>Templates</b><span>Reuse a saved post</span></div>${CHEV}</button>` : ''}
+${f.col ? `<button class="menu-row" data-sub="cols"><div><b>Saved colours</b><span>Your own status backgrounds</span></div>${CHEV}</button>` : ''}
+${f.unsend ? `<button class="menu-row" data-sub="hist"><div><b>Delete a sent post</b><span>Remove a status from the last 24 hours</span></div>${CHEV}</button>` : ''}
+${f.inbox ? `<button class="menu-row" data-sub="inbox"><div><b>Inbox and notices</b><span>News and messages to the admin</span></div>${CHEV}</button>` : ''}
+${f.ref ? `<button class="menu-row" data-sub="ref"><div><b>Refer a friend</b><span>Earn free days</span></div>${CHEV}</button>` : ''}
+${f.groups ? `<button class="menu-row" data-sub="groups"><div><b>Groups and links</b><span>${fmtN(m.counts.groups)} groups</span></div>${CHEV}</button>` : ''}
+${f.excl ? `<button class="menu-row" data-sub="excl"><div><b>Exclusions</b><span>Numbers that never receive anything</span></div>${CHEV}</button>` : ''}
 ${f.lists || f.glists ? `<button class="menu-row" data-sub="lists"><div><b>Lists</b><span>${fmtN(m.counts.lists)} saved</span></div>${CHEV}</button>` : ''}</div>`;
+}
+function tplHTML() {
+  const ty = { text: 'Text', image: 'Photo', video: 'Video', audio: 'Audio' };
+  return `${backBtn('More')}<h1 style="font-size:24px">Templates</h1><p style="color:var(--muted)">Reuse a post you saved. Save one from the Posts screen by giving it a template name.</p><ul class="rows">${S.tpls.map(t => `<li><div class="menu-row" style="align-items:flex-start;gap:10px"><div style="min-width:0"><b style="font-size:16px">${esc(t.name)}</b><span>${ty[t.type] || 'Post'}${t.preview ? ' · ' + esc(t.preview) : ''}</span>${S.tplOpen === t.i ? `<div style="margin-top:8px"><input type="datetime-local" id="tplat"><div class="two" style="margin-top:8px"><button class="btn ghost" data-tplsched-cancel>Cancel</button><button class="btn" data-tplgo="${t.i}">Schedule</button></div></div>` : ''}</div><span style="display:flex;flex-direction:column;gap:6px"><button class="chip" data-tplnow="${t.i}">Post now</button><button class="chip" data-tplsched="${t.i}">Schedule</button><button class="chip" data-tpldel="${t.i}">Delete</button></span></div></li>`).join('') || '<li><div class="menu-row"><div><span>No templates yet.</span></div></div></li>'}</ul>`;
+}
+function colHTML() {
+  return `${backBtn('More')}<h1 style="font-size:24px">Saved colours</h1><p style="color:var(--muted)">These show up as extra backgrounds when you write a status.</p><ul class="rows">${S.cols.map(c => `<li><div class="menu-row"><div style="display:flex;align-items:center;gap:12px"><span style="width:26px;height:26px;border-radius:50%;background:${esc(c.hex)};display:inline-block;flex:0 0 auto"></span><div><b style="font-size:16px">${esc(c.name)}</b><span>${esc(c.hex)}</span></div></div><button class="chip" data-coldel="${esc(c.name)}">Remove</button></div></li>`).join('') || '<li><div class="menu-row"><div><span>None yet.</span></div></div></li>'}</ul><h2>Add a colour</h2><input type="color" id="cval" value="#FF5722" aria-label="Colour" style="width:100%;height:48px"><input type="text" id="cname" maxlength="20" placeholder="Name, for example Sunset" style="margin-top:10px"><div style="margin-top:10px"><button class="btn" data-coladd>Save colour</button></div>`;
+}
+function histHTML() {
+  return `${backBtn('More')}<h1 style="font-size:24px">Delete a sent post</h1><p style="color:var(--muted)">Removes a status from everyone it was sent to. Statuses disappear after 24 hours anyway. People who already viewed it did see it.</p><ul class="rows">${S.hist.map(h => `<li><div class="menu-row"><div style="min-width:0"><b style="font-size:16px">“${esc(h.preview.slice(0, 80))}”</b><span>${when2(h.at)} · ${fmtN(h.people)} people</span></div>${h.removing ? '<span>Removing…</span>' : `<button class="chip" data-hdel="${esc(h.id)}">Delete</button>`}</div></li>`).join('') || '<li><div class="menu-row"><div><span>No posts from the last 24 hours can be deleted.</span></div></div></li>'}</ul>`;
+}
+const when2 = t => t ? `${dayLabel(t)}, ${clock(t)}` : '';
+function inboxHTML() {
+  const i = S.inbox, row = (txt, sub) => `<li><div class="menu-row"><div><b style="font-size:16px;white-space:pre-wrap">${esc(txt)}</b>${sub ? `<span>${sub}</span>` : ''}</div></div></li>`;
+  return `${backBtn('More')}<h1 style="font-size:24px">Inbox and notices</h1><h2>Notices</h2><ul class="rows">${i.notices.map(n => row(n.text, when2(n.at))).join('') || '<li><div class="menu-row"><div><span>No notices right now.</span></div></div></li>'}</ul>${i.canMessage ? `<h2>Message the admin</h2><textarea id="admmsg" maxlength="4000" placeholder="Write your message" style="min-height:100px"></textarea><div style="margin-top:10px"><button class="btn" data-admsend>Send message</button></div>${i.mine.length ? `<h2>Your recent messages</h2><ul class="rows">${i.mine.map(m => row(m.text.slice(0, 120), when2(m.at) + (m.replied ? ' · replied in Telegram' : ' · sent'))).join('')}</ul>` : ''}` : ''}`;
+}
+function refHTML() {
+  const r = S.ref; if (!r.active) return `${backBtn('More')}<h1 style="font-size:24px">Refer a friend</h1><p style="color:var(--muted)">Referrals are not active right now.</p>`;
+  return `${backBtn('More')}<h1 style="font-size:24px">Refer a friend</h1><p style="color:var(--muted)">When someone joins with your link and makes their first payment, you get <b>${r.days} free days</b>.</p><div class="empty" style="word-break:break-all"><b style="font-size:15px">${esc(r.link)}</b></div><div style="margin-top:10px"><button class="btn" data-copy="${esc(r.link)}">Copy my link</button></div><h2>Your referrals</h2><ul class="rows"><li><div class="menu-row"><div><b>${fmtN(r.joined)}</b><span>joined</span></div></div></li><li><div class="menu-row"><div><b>${fmtN(r.paid)}</b><span>paid</span></div></div></li><li><div class="menu-row"><div><b>${fmtN(r.earned)}</b><span>free days earned</span></div></div></li></ul>`;
+}
+function glistHTML() {
+  const q = (S.gq || '').toLowerCase(), all = S.allg.groups.filter(g => (!S.gquiet || g.quiet) && (!q || (g.name || '').toLowerCase().includes(q))), shown = all.slice(0, 80);
+  return (shown.map(g => `<li><div class="menu-row"><div><b style="font-size:16px">${esc(g.name || '(no name)')}</b><span>${fmtN(g.size)} members${g.admin ? ' · you admin' : ''}${g.quiet ? ' · quiet' : ''}</span></div>${g.link ? `<button class="chip" data-copy="${esc(g.link)}">Copy link</button>` : ''}</div></li>`).join('') || '<li><div class="menu-row"><div><span>No groups match.</span></div></div></li>') + (all.length > 80 ? `<li><div class="menu-row"><div><span>Showing 80 of ${fmtN(all.length)}. Search to narrow.</span></div></div></li>` : '');
+}
+function groupsHTML() {
+  const g = S.allg.groups;
+  return `${backBtn('More')}<h1 style="font-size:24px">Groups and links</h1><p style="color:var(--muted)">${fmtN(S.allg.total)} groups · ${g.filter(x => x.admin).length} you admin · ${g.filter(x => x.quiet).length} quiet or unnamed</p><div class="two"><button class="btn ghost" data-grefresh>Refresh groups</button><button class="btn ghost" data-gquiet aria-pressed="${!!S.gquiet}">${S.gquiet ? 'Show all' : 'Quiet only'}</button></div><div style="margin-top:12px"><input type="search" id="ggq" placeholder="Search your groups" aria-label="Search groups" value="${esc(S.gq || '')}"></div><ul class="rows" id="glist">${glistHTML()}</ul>`;
+}
+function exclHTML() {
+  const n = S.excl, shown = n.slice(0, 200);
+  return `${backBtn('More')}<h1 style="font-size:24px">Exclusions</h1><p style="color:var(--muted)">${fmtN(n.length)} excluded. These numbers never get your statuses or messages.</p><label class="lab" for="exnums">Numbers, one per line, with country code</label><textarea id="exnums" style="min-height:90px"></textarea><div class="two" style="margin-top:10px"><button class="btn" data-exadd>Exclude</button><button class="btn ghost" data-exrm-all>Remove typed</button></div><ul class="rows">${shown.map(x => `<li><div class="menu-row"><div><b style="font-size:16px">+${esc(x)}</b></div><button class="chip" data-exrm="${esc(x)}">Remove</button></div></li>`).join('') || '<li><div class="menu-row"><div><span>No excluded numbers.</span></div></div></li>'}${n.length > 200 ? `<li><div class="menu-row"><div><span>Showing 200 of ${fmtN(n.length)}.</span></div></div></li>` : ''}</ul>`;
 }
 function accountHTML() {
   const a = S.acct, w = a.wa, st = w.up ? 'Connected' + (w.number ? ' · +' + esc(w.number) : '') : w.linked ? 'Linked, reconnecting…' : 'Not linked';
@@ -377,7 +426,7 @@ async function show(tab, keep) {
   const main = $('#main');
   try { await loaders[tab](); } catch (e) { main.innerHTML = `<div class="full"><h1>Can’t load this</h1><p>${esc(e.message)}</p><button class="btn quiet" data-tab="${tab}">Try again</button></div>`; return; }
   main.innerHTML = routeHTML(tab);
-  if (tab === 'posts') { const at = $('#at'); if (at) { at.value = S.lastAt || defaultWhen(); at.min = defaultWhen(); } if ($('#txt')) { $('#txt').value = S.draft || ''; previewUpdate(); } $('#plist').innerHTML = plistHTML(); }
+  if (tab === 'posts') { const at = $('#at'); if (at) { at.value = S.lastAt || defaultWhen(); at.min = defaultWhen(); } if ($('#txt')) { $('#txt').value = S.draft || ''; previewUpdate(); } if (S.me.features.media && S.ptype !== 'text') renderMedia(); $('#plist').innerHTML = plistHTML(); }
   if (tab === 'messages' && S.view.messages === 'new') { $('#mtxt').value = S.nm.text; const at = $('#mat'); if (at) { at.value = S.nm.at || defaultWhen(); S.nm.at = at.value; at.min = defaultWhen(); } renderTarget(); }
   if (tab === 'more') afterListRender();
   if (!keep) window.scrollTo(0, 0);
@@ -413,7 +462,7 @@ document.addEventListener('click', async e => {
     if (d.when) { S.when = d.when; return show('posts', true); }
     if (b.id === 'go') {
       b.disabled = true; const text = $('#txt').value.trim(), later = S.when === 'later';
-      const r = await api('POST', '/api/posts', { text, bg: S.color, when: S.when, at: later ? new Date($('#at').value).getTime() : undefined });
+      const r = await api('POST', '/api/posts', { text, bg: S.color, when: S.when, at: later ? new Date($('#at').value).getTime() : undefined, saveAs: $('#tname') ? $('#tname').value : undefined });
       S.draft = ''; $('#txt').value = ''; buzz();
       if (r.scheduled) { toast(`Scheduled for ${dayLabel(r.at).toLowerCase()}, ${clock(r.at)}`); await loadPosts(); previewUpdate(); $('#plist').innerHTML = plistHTML(); }
       else { toast('Posting started. Follow it under Sending.'); setTimeout(() => show('sending'), 700); }
@@ -468,6 +517,29 @@ document.addEventListener('click', async e => {
       await api('POST', '/api/lists/delete', { kind: S.listOpen.kind, name: S.listOpen.name }); buzz(); toast('List deleted'); S.listOpen = null; S.view.more = 'lists'; return show('more');
     }
     if (d.back === 'lists') { S.view.more = 'lists'; S.listOpen = null; return show('more'); }
+    if (d.ptype) { S.ptype = d.ptype; S.media = null; return show('posts', true); }
+    if (b.id === 'mgo') {
+      b.disabled = true; const later = S.when === 'later';
+      try {
+        const r = await api('POST', '/api/posts', { type: S.media.type, upload: S.media.token, caption: $('#cap') ? $('#cap').value : undefined, when: S.when, at: later ? new Date($('#at').value).getTime() : undefined, saveAs: $('#tname') ? $('#tname').value : undefined });
+        S.media = null; buzz();
+        if (r.scheduled) { toast(`Scheduled for ${dayLabel(r.at).toLowerCase()}, ${clock(r.at)}`); await loadPosts(); show('posts', true); } else { toast('Posting started. Follow it under Sending.'); setTimeout(() => show('sending'), 700); }
+      } catch (x) { b.disabled = false; throw x; } return;
+    }
+    if (d.tplnow !== undefined) { if (await confirmAsk('Post this template now to your whole audience?')) { await api('POST', '/api/templates/use', { index: Number(d.tplnow), when: 'now' }); buzz(); toast('Posting started. Follow it under Sending.'); setTimeout(() => show('sending'), 700); } return; }
+    if (d.tplsched !== undefined) { S.tplOpen = Number(d.tplsched); $('#main').innerHTML = tplHTML(); const at = $('#tplat'); if (at) { at.value = defaultWhen(); at.min = defaultWhen(); } return; }
+    if (d.tplschedCancel !== undefined) { S.tplOpen = null; $('#main').innerHTML = tplHTML(); return; }
+    if (d.tplgo !== undefined) { await api('POST', '/api/templates/use', { index: Number(d.tplgo), when: 'later', at: new Date($('#tplat').value).getTime() }); S.tplOpen = null; buzz(); toast('Scheduled'); $('#main').innerHTML = tplHTML(); return; }
+    if (d.tpldel !== undefined && await confirmAsk('Delete this template?')) { await api('POST', '/api/templates/delete', { index: Number(d.tpldel) }); buzz(); await loadTpls(); $('#main').innerHTML = tplHTML(); return; }
+    if (d.coladd !== undefined) { await api('POST', '/api/colours', { hex: $('#cval').value, name: $('#cname').value }); buzz(); toast('Colour saved'); await loadCols(); $('#main').innerHTML = colHTML(); return; }
+    if (d.coldel !== undefined && await confirmAsk('Remove this colour?')) { await api('POST', '/api/colours/delete', { name: d.coldel }); buzz(); await loadCols(); $('#main').innerHTML = colHTML(); return; }
+    if (d.hdel !== undefined && await confirmAsk('Remove this post from everyone it was sent to? People who already viewed it did see it.')) { await api('POST', '/api/history/delete', { id: d.hdel }); buzz(); toast('Removing the post…'); await loadHist(); $('#main').innerHTML = histHTML(); return; }
+    if (d.admsend !== undefined) { const v = $('#admmsg').value; b.disabled = true; try { const r = await api('POST', '/api/inbox/message', { text: v }); buzz(); toast(r.notified ? 'Sent to the admin' : 'Saved. The admin could not be notified right now'); await loadInbox(); $('#main').innerHTML = inboxHTML(); } finally { b.disabled = false; } return; }
+    if (d.grefresh !== undefined) { b.disabled = true; try { const r = await api('POST', '/api/groups/refresh'); toast(`Refreshed ${r.total} groups`); await loadAllGroups(); $('#main').innerHTML = groupsHTML(); } finally { b.disabled = false; } return; }
+    if (d.gquiet !== undefined) { S.gquiet = !S.gquiet; $('#main').innerHTML = groupsHTML(); return; }
+    if (d.copy) { try { await navigator.clipboard.writeText(d.copy); toast('Link copied'); } catch (x) { toast(d.copy); } return; }
+    if (d.exadd !== undefined || d.exrmAll !== undefined) { const v = $('#exnums').value; await api('POST', '/api/exclusions', { numbers: v, action: d.exadd !== undefined ? 'add' : 'remove' }); buzz(); toast(d.exadd !== undefined ? 'Excluded' : 'Removed'); await loadExcl(); $('#main').innerHTML = exclHTML(); return; }
+    if (d.exrm) { await api('POST', '/api/exclusions', { numbers: d.exrm, action: 'remove' }); buzz(); await loadExcl(); $('#main').innerHTML = exclHTML(); return; }
     if (d.linkgo !== undefined) { b.disabled = true; try { await api('POST', '/api/link', { phone: $('#lphone').value }); toast('Requesting your code…'); setTimeout(async () => { try { await loadAccount(); if (S.tab === 'more' && S.view.more === 'account') $('#main').innerHTML = accountHTML(); } catch (x) {} }, 3000); } catch (x) { b.disabled = false; throw x; } return; }
     if (d.tog) { await api('POST', '/api/account/toggle', { key: d.tog }); buzz(); await loadAccount(); $('#main').innerHTML = accountHTML(); return; }
     if (d.repair !== undefined && await confirmAsk('Repair the WhatsApp session? You stay logged in.')) { await api('POST', '/api/repair'); buzz(); toast('Repaired. Reconnecting…'); await loadAccount(); $('#main').innerHTML = accountHTML(); return; }
@@ -494,7 +566,7 @@ function demo(method, full, body) {
   D.jobs ||= [{ id: 21, type: 'status', preview: 'Black Friday is here', total: 2500, sent: 1180, started: Date.now() - 6 * 60000, stopping: false }];
   D.jobs.forEach(j => { if (!j.stopping && j.sent < j.total) j.sent = Math.min(j.total, j.sent + 70); });
   const r = v => new Promise(res => setTimeout(() => res(v), 120)), key = method + ' ' + path, last = path.split('/').pop();
-  if (key === 'GET /api/me') return r({ id: '1', name: 'Ruthy', role: 'user', wa: { linked: true, up: true, number: '2348168593820', name: 'Ruthy' }, plan: { name: 'Monthly', expires: Date.now() + D.plan * 24 * h, expired: false, paused: false, daysLeft: D.plan }, usage: { today: 8, limit: 10, total: 142 }, counts: { contacts: 25716, groups: 496, scheduledPosts: D.posts.length, scheduledMessages: D.msgs.length, lists: 4 }, features: { post: true, schedule: true, messages: true, sending: true, lists: true, glists: true, plan: true, insights: true } });
+  if (key === 'GET /api/me') return r({ id: '1', name: 'Ruthy', role: 'user', wa: { linked: true, up: true, number: '2348168593820', name: 'Ruthy' }, plan: { name: 'Monthly', expires: Date.now() + D.plan * 24 * h, expired: false, paused: false, daysLeft: D.plan }, usage: { today: 8, limit: 10, total: 142 }, counts: { contacts: 25716, groups: 496, scheduledPosts: D.posts.length, scheduledMessages: D.msgs.length, lists: 4 }, features: { post: true, schedule: true, messages: true, sending: true, lists: true, glists: true, media: true, tpl: true, col: true, unsend: true, inbox: true, ref: true, groups: true, excl: true, plan: true, insights: true } });
   if (key === 'GET /api/posts') return r({ posts: [...D.posts].sort((a, b) => a.at - b.at) });
   if (key === 'POST /api/posts') { if (body.when === 'later') { D.posts.push({ id: Date.now(), type: 'text', text: body.text, at: body.at, repeat: 'none', bg: body.bg }); return r({ scheduled: true, at: body.at }); } D.jobs.push({ id: Date.now(), type: 'status', preview: body.text.slice(0, 40), total: 2500, sent: 0, started: Date.now(), stopping: false }); return r({ started: true }); }
   if (method === 'DELETE' && path.startsWith('/api/posts/')) { D.posts = D.posts.filter(p => String(p.id) !== last); return r({ ok: true }); }
@@ -518,14 +590,56 @@ function demo(method, full, body) {
   if (key === 'GET /api/plans') return r({ online: true, email: '', general: { link: '', bank: '' }, plans: [{ id: 1, name: 'Weekly', price: '₦2,000', days: 7, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }, { id: 2, name: 'Monthly', price: '₦5,000', days: 30, payable: true, manual: { link: '', bank: 'Bank: Example Bank\nAccount: 0123456789\nName: Waapo' } }] });
   if (key === 'POST /api/pay') { if (!body.email) return Promise.reject(new Error('Enter a valid email address for the receipt.')); return r({ url: 'https://example.com/pay' }); }
   if (key === 'GET /api/insights') return r({ hours: [0, 0, 0, 0, 0, 1, 2, 4, 7, 6, 5, 5, 6, 5, 4, 5, 6, 8, 11, 17, 21, 15, 7, 2], views7: 312, viewers7: 188, posts7: 9, totals: { posts: 142, viewers: 604, views: 5230 }, topViewers: [{ name: 'Ada Obi', number: '234801', views: 41, last: Date.now() }, { name: '', number: '234802', views: 33, last: Date.now() }, { name: 'Chidi', number: '234803', views: 29, last: Date.now() }], bestPosts: [{ preview: 'Black Friday is here', at: Date.now(), views: 233, sent: 2500 }, { preview: 'Good night everyone 🌙', at: Date.now(), views: 190, sent: 2400 }] });
+  if (key === 'GET /api/colours') return r({ colors: D.cols ||= [{ name: 'Sunset', hex: '#FF5722' }, { name: 'Ocean', hex: '#0288D1' }] });
+  if (key === 'POST /api/colours') { D.cols = [...(D.cols || []).filter(c => c.name !== body.name), { name: body.name, hex: body.hex.toUpperCase() }]; return r({ ok: true }); }
+  if (key === 'POST /api/colours/delete') { D.cols = (D.cols || []).filter(c => c.name !== body.name); return r({ ok: true }); }
+  if (key === 'GET /api/templates') return r({ templates: (D.tpls ||= [{ name: 'Good morning', type: 'text', preview: 'Good morning everyone, have a blessed day', bg: '#128C7E' }, { name: 'Promo photo', type: 'image', preview: 'New stock is in', bg: null }]).map((t, i) => ({ ...t, i })) });
+  if (key === 'POST /api/templates/use') return r(body.when === 'later' ? { scheduled: true, at: body.at } : { started: true });
+  if (key === 'POST /api/templates/delete') { D.tpls.splice(body.index, 1); return r({ ok: true }); }
+  if (key === 'GET /api/history') return r({ posts: (D.hist ||= [{ id: 1, at: Date.now() - 3 * 36e5, preview: 'Black Friday is here', people: 1180 }, { id: 2, at: Date.now() - 9 * 36e5, preview: 'Good morning everyone', people: 1204 }]) });
+  if (key === 'POST /api/history/delete') { D.hist = D.hist.filter(h => String(h.id) !== String(body.id)); return r({ started: true }); }
+  if (key === 'GET /api/inbox') return r({ canMessage: true, notices: [{ text: 'Server maintenance tonight at 11pm. Scheduled posts still go out.', at: Date.now() - 20 * 36e5 }], mine: (D.mine ||= []).slice() });
+  if (key === 'POST /api/inbox/message') { D.mine = [{ text: body.text, at: Date.now(), replied: false }, ...(D.mine || [])]; return r({ ok: true, notified: true }); }
+  if (key === 'GET /api/referral') return r({ active: true, days: 7, link: 'https://t.me/waapo_bot?start=ref_abc12', joined: 4, paid: 2, earned: 14 });
+  if (key === 'GET /api/groups/all') return r({ total: 6, groups: [['Church choir', 84, 1, 0], ['Estate residents', 212, 0, 0], ['Old classmates 2009', 57, 0, 1], ['Weekend sales hub', 130, 1, 0], ['Family', 18, 0, 0], ['', 9, 0, 1]].map((g, i) => ({ id: 'g' + i, name: g[0], size: g[1], admin: !!g[2], quiet: !!g[3], link: g[2] ? 'https://chat.whatsapp.com/Abc' + i : '' })) });
+  if (key === 'POST /api/groups/refresh') return r({ ok: true, total: 6 });
+  if (key === 'GET /api/exclusions' || key === 'POST /api/exclusions') { D.excl ||= ['2348011112222', '2348033334444']; if (method === 'POST') { const n = String(body.numbers).split(/\D+/).filter(x => x.length > 6); D.excl = body.action === 'remove' ? D.excl.filter(x => !n.includes(x)) : [...new Set([...D.excl, ...n])]; } return r({ numbers: D.excl }); }
   if (key === 'GET /api/account') return r({ wa: { linked: true, up: true, number: '2348012345678' }, alerts: true, weekly: true, autoPrune: false, can: { alerts: true, weekly: true, prune: true, repair: true }, health: [{ t: Date.now() - 36e5, kind: 'groups synced', detail: '501 groups' }, { t: Date.now() - 5 * 36e5, kind: 'reconnect', detail: 'code 515' }], code: null });
   return r({});
 }
 
+async function pollHist() {
+  if (document.hidden || S.tab !== 'more' || S.view.more !== 'hist' || !S.hist.some(h => h.removing)) return;
+  try { await loadHist(); $('#main').innerHTML = histHTML(); } catch (x) {}
+}
 async function pollAcct() {                            // while linking: show the code and the Connected state as soon as they happen
   if (document.hidden || S.tab !== 'more' || S.view.more !== 'account' || !S.acct) return;
   const o = S.acct; try { await loadAccount(); if (o.code !== S.acct.code || o.wa.up !== S.acct.wa.up || o.wa.linked !== S.acct.wa.linked) $('#main').innerHTML = accountHTML(); } catch (x) {}
 }
+const shrink = f => new Promise((ok, bad) => {                  // phone photos are huge: scale to 1600 px, plenty for a status and quick to upload
+  const img = new Image(), u = URL.createObjectURL(f);
+  img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); c.toBlob(b => b ? ok(b) : bad(new Error('Could not read that photo.')), 'image/jpeg', .85); URL.revokeObjectURL(u); };
+  img.onerror = () => bad(new Error('Use a JPG or PNG photo.')); img.src = u;
+});
+async function upload(type, blob) {
+  if (DEMO) return { token: 'demo' };
+  let r; try { r = await fetch(API + '/api/upload?type=' + type, { method: 'POST', headers: { Authorization: 'tma ' + (tg ? tg.initData : ''), 'Content-Type': 'application/octet-stream' }, body: blob }); } catch (x) { throw new Error('Cannot reach the server. Check your connection.'); }
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Upload failed. Try again.'); return j;
+}
+function renderMedia() {
+  const m = S.media, el = $('#mprev'), go = $('#mgo'); if (!el) return;
+  el.innerHTML = !m ? '' : m.status === 'uploading' ? '<div class="empty"><b>Uploading…</b>Keep this screen open.</div>'
+    : m.type === 'image' ? `<img src="${m.url}" alt="Your photo" style="max-width:100%;max-height:300px;border-radius:12px">` : m.type === 'video' ? `<video src="${m.url}" controls playsinline style="max-width:100%;max-height:300px;border-radius:12px"></video>` : `<audio src="${m.url}" controls style="width:100%"></audio>`;
+  if (go) go.disabled = !(m && m.status === 'ready') || (S.when === 'later' && !$('#at').value);
+}
+document.addEventListener('change', async e => {
+  if (e.target.id === 'at') return renderMedia();
+  if (e.target.id !== 'mfile') return; const f = e.target.files[0]; if (!f) return; const type = S.ptype;
+  S.media = { type, status: 'uploading' }; renderMedia();
+  try { const blob = type === 'image' ? await shrink(f) : f, r = await upload(type, blob); S.media = { type, token: r.token, url: URL.createObjectURL(blob), status: 'ready' }; }
+  catch (x) { S.media = null; e.target.value = ''; toast(x.message, true); } renderMedia();
+});
+document.addEventListener('input', e => { if (e.target.id === 'ggq' && S.allg) { S.gq = e.target.value; $('#glist').innerHTML = glistHTML(); } });
 /* ---------- start ---------- */
 async function start() {
   const main = $('#main');
@@ -542,7 +656,7 @@ async function start() {
   if (err) { main.innerHTML = `<div class="full"><h1>Can’t open the app</h1><p>${esc(err.message)}</p><button class="btn quiet" onclick="location.reload()">Try again</button></div>`; return; }
   await show('home');
   setInterval(refresh, 30000); document.addEventListener('visibilitychange', refresh);
-  setInterval(() => { if (S.tab === 'sending') refresh(); pollAcct(); }, 4000);
+  setInterval(() => { if (S.tab === 'sending') refresh(); pollAcct(); pollHist(); }, 4000);
 }
 start();
 })();
